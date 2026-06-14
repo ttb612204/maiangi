@@ -1,0 +1,19 @@
+# Thư mục thư viện (Dependency)
+node_modules/
+**/node_modules/
+
+# Thư mục build (Build outputs)
+dist/
+**/dist/
+
+# Tệp môi trường chứa mật khẩu (Secrets)
+.env
+**/env
+**/.env
+
+# Tệp của trình soạn thảo và OS
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini
+*.log

@@ -1,0 +1,61 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model ThanhVien {
+  id            Int             @id @default(autoincrement()) @map("id")
+  ten           String          @db.VarChar(100) @map("ten")
+  nguoiAn       NguoiAn[]
+  nguoiTraTien  NguoiTraTien[]
+  tongKetTuan   TongKetTuan[]
+
+  @@map("thanh_vien")
+}
+
+model BuaToi {
+  id            Int             @id @default(autoincrement()) @map("id")
+  thuTrongTuan  String          @db.VarChar(20) @map("thu_trong_tuan")
+  tongTien      Decimal         @db.Decimal(12, 2) @map("tong_tien")
+  ngayAn        DateTime        @db.Date @map("ngay_an")
+  nguoiAn       NguoiAn[]
+  nguoiTraTien  NguoiTraTien[]
+
+  @@map("bua_toi")
+  @@index([ngayAn])
+}
+
+model NguoiAn {
+  id            Int             @id @default(autoincrement()) @map("id")
+  buaToiId      Int             @map("bua_toi_id")
+  thanhVienId   Int             @map("thanh_vien_id")
+  buaToi        BuaToi          @relation(fields: [buaToiId], references: [id], onDelete: Cascade)
+  thanhVien     ThanhVien       @relation(fields: [thanhVienId], references: [id], onDelete: Cascade)
+
+  @@map("nguoi_an")
+}
+
+model NguoiTraTien {
+  id            Int             @id @default(autoincrement()) @map("id")
+  buaToiId      Int             @map("bua_toi_id")
+  thanhVienId   Int             @map("thanh_vien_id")
+  soTienDaTra   Decimal         @db.Decimal(12, 2) @map("so_tien_da_tra")
+  buaToi        BuaToi          @relation(fields: [buaToiId], references: [id], onDelete: Cascade)
+  thanhVien     ThanhVien       @relation(fields: [thanhVienId], references: [id], onDelete: Cascade)
+
+  @@map("nguoi_tra_tien")
+}
+
+model TongKetTuan {
+  id            Int             @id @default(autoincrement()) @map("id")
+  thanhVienId   Int             @map("thanh_vien_id")
+  tongNo        Decimal         @db.Decimal(12, 2) @map("tong_no")
+  tongDuocNhan  Decimal         @db.Decimal(12, 2) @map("tong_duoc_nhan")
+  thanhVien     ThanhVien       @relation(fields: [thanhVienId], references: [id], onDelete: Cascade)
+
+  @@map("tong_ket_tuan")
+}
