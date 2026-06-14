@@ -18,6 +18,11 @@ app.use(express.json());
 app.use('/api', thanhVienRoutes);
 app.use('/api', buaToiRoutes);
 
+// Trang chủ máy chủ hiển thị trạng thái hoạt động
+app.get('/', (req, res) => {
+  res.send('Máy chủ Quản lý Ăn uống đang hoạt động mượt mà!');
+});
+
 // Khởi chạy máy chủ
 app.listen(port, () => {
   console.log(`Backend server is running on port ${port}`);
