@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { ChefHat, AlertCircle, X, Landmark, CalendarDays, Coins, Copy, Check, Download, Upload } from 'lucide-react';
+import { ChefHat, AlertCircle, X, Landmark, CalendarDays, Coins, Copy, Check } from 'lucide-react';
 import {
   getThanhViens,
   addThanhVien,
@@ -8,8 +8,6 @@ import {
   getBuaTois,
   addBuaToi,
   getTongKetTuan,
-  exportBackupData,
-  importBackupData,
   ThanhVien,
   BuaToi,
   TongKetResponse,
@@ -263,30 +261,6 @@ function App() {
     setIsSummaryModalOpen(true);
   }, []);
 
-  const handleExport = useCallback(() => {
-    try {
-      const code = exportBackupData();
-      navigator.clipboard.writeText(code).then(() => {
-        alert('Đã xuất mã sao lưu thành công và sao chép vào bộ nhớ tạm! Bạn có thể gửi mã này qua Zalo/Messenger cho bạn bè để đồng bộ dữ liệu.');
-      });
-    } catch (err) {
-      console.error(err);
-      alert('Không thể xuất dữ liệu sao lưu.');
-    }
-  }, []);
-
-  const handleImport = useCallback(() => {
-    const code = prompt('Nhập mã sao lưu dữ liệu vào đây (mã code mà bạn của bạn đã gửi):');
-    if (!code) return;
-    try {
-      importBackupData(code);
-      alert('Đồng bộ dữ liệu thành công!');
-      window.location.reload();
-    } catch (err: any) {
-      alert(err.message || 'Mã sao lưu không hợp lệ.');
-    }
-  }, []);
-
 
   // Helper hiển thị ngày format DD/MM/YYYY
   const displayDateStr = (dateStr: string) => {
@@ -322,27 +296,9 @@ function App() {
             </p>
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <button
-            onClick={handleExport}
-            className="px-3.5 py-2 bg-indigo-500/10 hover:bg-indigo-500/25 border border-indigo-500/30 hover:border-indigo-500/50 text-indigo-300 hover:text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer"
-            title="Sao chép mã dữ liệu để gửi cho bạn bè"
-          >
-            <Download className="w-3.5 h-3.5" />
-            Xuất Sao Lưu
-          </button>
-          <button
-            onClick={handleImport}
-            className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-slate-650 text-slate-300 hover:text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer"
-            title="Dán mã dữ liệu từ bạn bè để đồng bộ"
-          >
-            <Upload className="w-3.5 h-3.5" />
-            Nhập Sao Lưu
-          </button>
-          <div className="flex items-center gap-1.5 ml-2 border-l border-slate-800 pl-3">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-            <span className="text-[10px] text-slate-400 font-medium font-mono">Phiên Bản 2.0 (Offline)</span>
-          </div>
+        <div className="flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+          <span className="text-xs text-slate-400 font-medium font-mono">Phiên Bản 3.0 (Cloud Sync)</span>
         </div>
       </header>
 
