@@ -11,12 +11,20 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Khởi tạo PostgreSQL connection pool kết nối tới Supabase
+// Khởi tạo PostgreSQL connection pool kết nối tới Supabase (fallback về chuỗi dummy nếu thiếu env để tránh crash khởi tạo)
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: {
-    rejectUnauthorized: false, // Yêu cầu SSL của Supabase
-  },
+  connectionString: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/postgres',
+  ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false,
+});
+
+// Middleware kiểm tra cấu hình biến môi trường
+app.use((req, res, next) => {
+  if (!process.env.DATABASE_URL) {
+    return res.status(500).json({
+      error: 'Chưa cấu hình biến môi trường DATABASE_URL trên Vercel. Vui lòng vào Settings -> Environment Variables của dự án maiangi-two và thêm DATABASE_URL với chuỗi kết nối từ Supabase.',
+    });
+  }
+  next();
 });
 
 // ============================================================================
