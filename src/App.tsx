@@ -240,6 +240,42 @@ function App() {
       .filter((x): x is NonNullable<typeof x> => x !== null);
   }, [buaTois, selectedCreditorId, getTenThanhVien]);
 
+  const activeDailyEatenBreakdown = useMemo(() => {
+    if (!selectedCreditorId) return [];
+    return buaTois
+      .map((bt) => {
+        const isNguoiAn = bt.nguoiAnIds?.includes(selectedCreditorId);
+        if (!isNguoiAn) return null;
+
+        const countNguoiAn = bt.nguoiAnIds?.length || 0;
+        const tienMoiNguoi = countNguoiAn > 0 ? bt.tongTien / countNguoiAn : 0;
+
+        const nguoiTraKhac = bt.nguoiTraTien
+          ?.filter((p) => p.thanhVienId !== selectedCreditorId)
+          .map((p) => ({
+            thanhVienId: p.thanhVienId,
+            ten: getTenThanhVien(p.thanhVienId),
+            soTienDaTra: p.soTienDaTra,
+          })) || [];
+
+        const tuTraRecord = bt.nguoiTraTien?.find((p) => p.thanhVienId === selectedCreditorId);
+        const tuTraAmount = tuTraRecord ? tuTraRecord.soTienDaTra : 0;
+        const netDinnerBalance = tuTraAmount - tienMoiNguoi;
+
+        if (netDinnerBalance >= -0.01) {
+          return null;
+        }
+
+        return {
+          thuTrongTuan: bt.thuTrongTuan,
+          tienMoiNguoi,
+          soTienNoBuaNay: Math.abs(netDinnerBalance),
+          nguoiTraKhac,
+        };
+      })
+      .filter((x): x is NonNullable<typeof x> => x !== null);
+  }, [buaTois, selectedCreditorId, getTenThanhVien]);
+
   const handlePrevWeek = useCallback(() => {
     setSelectedWeekStart((prev) => {
       const d = new Date(prev);
@@ -385,6 +421,9 @@ function App() {
         const activeDanhSachNhan = tongKet?.danhSachChuyenKhoan.filter(
           (gd) => gd.denThanhVienId === selectedCreditorId
         ) || [];
+        const activeDanhSachTra = tongKet?.danhSachChuyenKhoan.filter(
+          (gd) => gd.tuThanhVienId === selectedCreditorId
+        ) || [];
 
         if (!activeCreditor) return null;
 
@@ -400,7 +439,19 @@ function App() {
                     BẢNG CHI TIẾT PHÂN CHIA - {activeCreditor.ten}
                   </h3>
                   <p className="text-xs text-slate-400 mt-0.5">
-                    Tổng tiền được nhận lại: <span className="text-emerald-400 font-extrabold font-mono">{formatVND(activeCreditor.netBalance)}</span>
+                    {activeCreditor.netBalance > 0.01 ? (
+                      <>
+                        Tổng tiền được nhận lại: <span className="text-emerald-400 font-extrabold font-mono">{formatVND(activeCreditor.netBalance)}</span>
+                      </>
+                    ) : activeCreditor.netBalance < -0.01 ? (
+                      <>
+                        Tổng tiền cần chuyển trả: <span className="text-rose-400 font-extrabold font-mono">{formatVND(Math.abs(activeCreditor.netBalance))}</span>
+                      </>
+                    ) : (
+                      <>
+                        Số dư tuần này: <span className="text-slate-350 font-extrabold font-mono">{formatVND(0)} (Đã hòa)</span>
+                      </>
+                    )}
                   </p>
                 </div>
                 <button
@@ -415,96 +466,198 @@ function App() {
               <div className="p-6 overflow-y-auto space-y-6 bg-slate-950/20">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   
-                  {/* Cột trái: Ai cần chuyển khoản */}
-                  <div className="space-y-3">
-                    <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                      <Coins className="w-4 h-4 text-emerald-400" />
-                      1. Các thành viên cần chuyển trả cho {activeCreditor.ten}
-                    </h4>
-                    
-                    {activeDanhSachNhan.length === 0 ? (
-                      <div className="bg-slate-900/40 border border-slate-850 rounded-xl p-4 text-center text-xs text-slate-500">
-                        Không có ai cần chuyển trả thêm tiền.
-                      </div>
-                    ) : (
-                      <div className="space-y-2.5">
-                        {activeDanhSachNhan.map((gd, idx) => {
-                          const copyKey = `modal-${activeCreditor.thanhVienId}-receive-from-${gd.tuThanhVienId}-${idx}`;
-                          return (
-                            <div
-                              key={idx}
-                              className="flex items-center justify-between p-3.5 rounded-xl bg-slate-900/40 border border-slate-800/80 hover:border-slate-700/60 transition-colors"
-                            >
-                              <div className="flex items-center gap-2 text-sm text-slate-200">
-                                <span className="font-bold text-rose-300">{gd.tuTen}</span>
-                                <span className="text-slate-500 font-normal">chuyển cho</span>
-                                <span className="font-bold text-slate-100">{activeCreditor.ten}</span>
-                              </div>
-                              
-                              <div className="flex items-center gap-3">
-                                <span className="font-mono font-extrabold text-indigo-300 text-sm">
-                                  {formatVND(gd.soTien)}
-                                </span>
+                  {/* Cột trái: Chi tiết nhận & trả */}
+                  <div className="space-y-6">
+                    {/* Nhóm 1: Nhận tiền */}
+                    <div className="space-y-3">
+                      <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                        <Coins className="w-4 h-4 text-emerald-400" />
+                        1. Được nhận tiền từ ({activeDanhSachNhan.length})
+                      </h4>
+                      
+                      {activeDanhSachNhan.length === 0 ? (
+                        <div className="bg-slate-900/40 border border-slate-850 rounded-xl p-4 text-center text-xs text-slate-500">
+                          Không có khoản nào được nhận.
+                        </div>
+                      ) : (
+                        <div className="space-y-2.5">
+                          {activeDanhSachNhan.map((gd, idx) => {
+                            const copyKey = `modal-${activeCreditor.thanhVienId}-receive-from-${gd.tuThanhVienId}-${idx}`;
+                            return (
+                              <div
+                                key={idx}
+                                className="flex items-center justify-between p-3.5 rounded-xl bg-slate-900/40 border border-slate-800/80 hover:border-slate-700/60 transition-colors"
+                              >
+                                <div className="flex items-center gap-2 text-sm text-slate-200">
+                                  <span className="font-bold text-rose-300">{gd.tuTen}</span>
+                                  <span className="text-slate-500 font-normal">chuyển cho</span>
+                                  <span className="font-bold text-slate-100">{activeCreditor.ten}</span>
+                                </div>
                                 
-                                <button
-                                  onClick={() => handleCopyText(gd.tuTen, activeCreditor.ten, gd.soTien, copyKey)}
-                                  className={`p-2 rounded-lg border transition-all duration-200 flex items-center justify-center cursor-pointer ${
-                                    copiedKey === copyKey
-                                      ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400'
-                                      : 'bg-slate-950 border-slate-850 text-slate-400 hover:text-indigo-400 hover:border-indigo-500/30'
-                                  }`}
-                                  title="Copy cú pháp chuyển khoản"
-                                >
-                                  {copiedKey === copyKey ? (
-                                    <Check className="w-3.5 h-3.5" />
-                                  ) : (
-                                    <Copy className="w-3.5 h-3.5" />
-                                  )}
-                                </button>
+                                <div className="flex items-center gap-3">
+                                  <span className="font-mono font-extrabold text-indigo-300 text-sm">
+                                    {formatVND(gd.soTien)}
+                                  </span>
+                                  
+                                  <button
+                                    onClick={() => handleCopyText(gd.tuTen, activeCreditor.ten, gd.soTien, copyKey)}
+                                    className={`p-2 rounded-lg border transition-all duration-200 flex items-center justify-center cursor-pointer ${
+                                      copiedKey === copyKey
+                                        ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400'
+                                        : 'bg-slate-950 border-slate-850 text-slate-400 hover:text-indigo-400 hover:border-indigo-500/30'
+                                    }`}
+                                    title="Copy cú pháp chuyển khoản"
+                                  >
+                                    {copiedKey === copyKey ? (
+                                      <Check className="w-3.5 h-3.5" />
+                                    ) : (
+                                      <Copy className="w-3.5 h-3.5" />
+                                    )}
+                                  </button>
+                                </div>
                               </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Nhóm 2: Chuyển tiền */}
+                    <div className="space-y-3">
+                      <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                        <Coins className="w-4 h-4 text-rose-400" />
+                        2. Cần chuyển trả tiền cho ({activeDanhSachTra.length})
+                      </h4>
+                      
+                      {activeDanhSachTra.length === 0 ? (
+                        <div className="bg-slate-900/40 border border-slate-850 rounded-xl p-4 text-center text-xs text-slate-500">
+                          Không có khoản nào cần chuyển trả.
+                        </div>
+                      ) : (
+                        <div className="space-y-2.5">
+                          {activeDanhSachTra.map((gd, idx) => {
+                            const copyKey = `modal-${activeCreditor.thanhVienId}-send-to-${gd.denThanhVienId}-${idx}`;
+                            return (
+                              <div
+                                key={idx}
+                                className="flex items-center justify-between p-3.5 rounded-xl bg-slate-900/40 border border-slate-800/80 hover:border-slate-700/60 transition-colors"
+                              >
+                                <div className="flex items-center gap-2 text-sm text-slate-200">
+                                  <span className="font-bold text-slate-100">{activeCreditor.ten}</span>
+                                  <span className="text-slate-500 font-normal">chuyển cho</span>
+                                  <span className="font-bold text-rose-350">{gd.denTen}</span>
+                                </div>
+                                
+                                <div className="flex items-center gap-3">
+                                  <span className="font-mono font-extrabold text-rose-450 text-sm">
+                                    {formatVND(gd.soTien)}
+                                  </span>
+                                  
+                                  <button
+                                    onClick={() => handleCopyText(activeCreditor.ten, gd.denTen, gd.soTien, copyKey)}
+                                    className={`p-2 rounded-lg border transition-all duration-200 flex items-center justify-center cursor-pointer ${
+                                      copiedKey === copyKey
+                                        ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400'
+                                        : 'bg-slate-950 border-slate-850 text-slate-400 hover:text-rose-400 hover:border-rose-500/30'
+                                    }`}
+                                    title="Copy cú pháp chuyển khoản"
+                                  >
+                                    {copiedKey === copyKey ? (
+                                      <Check className="w-3.5 h-3.5" />
+                                    ) : (
+                                      <Copy className="w-3.5 h-3.5" />
+                                    )}
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
                   </div>
 
-                  {/* Cột phải: Giải trình các ngày chi */}
-                  <div className="space-y-3">
-                    <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                      <CalendarDays className="w-4 h-4 text-violet-400" />
-                      2. Giải trình chi tiết các ngày {activeCreditor.ten} đã chi
-                    </h4>
-                    
-                    {activeDailyPaidBreakdown.length === 0 ? (
-                      <div className="bg-slate-900/40 border border-slate-850 rounded-xl p-4 text-center text-xs text-slate-500">
-                        Không có lịch sử chi tiền.
-                      </div>
-                    ) : (
-                      <div className="space-y-4 max-h-[50vh] overflow-y-auto pr-1">
-                        {activeDailyPaidBreakdown.map((day, idx) => (
-                          <div key={idx} className="bg-slate-900/50 p-4 rounded-xl border border-slate-800 space-y-3">
-                            <div className="flex justify-between items-center text-xs border-b border-slate-800/60 pb-2">
-                              <span className="font-bold text-indigo-400 text-sm">{day.thuTrongTuan}</span>
-                              <span className="text-slate-400">
-                                Đã chi: <span className="font-extrabold text-slate-200 font-mono">{formatVND(day.soTienDaChi)}</span>
-                              </span>
+                  {/* Cột phải: Giải trình các ngày */}
+                  <div className="space-y-6">
+                    {/* Nhóm 3: Giải trình các ngày đã chi */}
+                    <div className="space-y-3">
+                      <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                        <CalendarDays className="w-4 h-4 text-violet-400" />
+                        3. Giải trình các ngày {activeCreditor.ten} đã chi
+                      </h4>
+                      
+                      {activeDailyPaidBreakdown.length === 0 ? (
+                        <div className="bg-slate-900/40 border border-slate-850 rounded-xl p-4 text-center text-xs text-slate-500">
+                          Không có lịch sử chi tiền.
+                        </div>
+                      ) : (
+                        <div className="space-y-3 max-h-[30vh] overflow-y-auto pr-1">
+                          {activeDailyPaidBreakdown.map((day, idx) => (
+                            <div key={idx} className="bg-slate-900/50 p-4 rounded-xl border border-slate-800 space-y-3">
+                              <div className="flex justify-between items-center text-xs border-b border-slate-800/60 pb-2">
+                                <span className="font-bold text-indigo-400 text-sm">{day.thuTrongTuan}</span>
+                                <span className="text-slate-400">
+                                  Đã chi: <span className="font-extrabold text-slate-200 font-mono">{formatVND(day.soTienDaChi)}</span>
+                                </span>
+                              </div>
+                              
+                              <div className="space-y-2">
+                                {day.nguoiNoBuaNay.map((nguoi, nIdx) => (
+                                  <div key={nIdx} className="flex justify-between items-center text-xs">
+                                    <span className="text-slate-350">{nguoi.ten}</span>
+                                    <span className="font-mono text-slate-400 text-[11px]">
+                                      Ăn nợ: <span className="text-rose-400/90 font-medium">{formatVND(nguoi.soTienNo)}</span>
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
                             </div>
-                            
-                            <div className="space-y-2">
-                              {day.nguoiNoBuaNay.map((nguoi, nIdx) => (
-                                <div key={nIdx} className="flex justify-between items-center text-xs">
-                                  <span className="text-slate-350">{nguoi.ten}</span>
-                                  <span className="font-mono text-slate-400 text-[11px]">
-                                    Ăn nợ: <span className="text-rose-400/90 font-medium">{formatVND(nguoi.soTienNo)}</span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Nhóm 4: Giải trình các ngày ăn nợ */}
+                    <div className="space-y-3">
+                      <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                        <CalendarDays className="w-4 h-4 text-rose-400" />
+                        4. Giải trình các bữa {activeCreditor.ten} ăn nợ
+                      </h4>
+                      
+                      {activeDailyEatenBreakdown.length === 0 ? (
+                        <div className="bg-slate-900/40 border border-slate-850 rounded-xl p-4 text-center text-xs text-slate-500">
+                          Không có lịch sử ăn nợ.
+                        </div>
+                      ) : (
+                        <div className="space-y-3 max-h-[30vh] overflow-y-auto pr-1">
+                          {activeDailyEatenBreakdown.map((day, idx) => (
+                            <div key={idx} className="bg-slate-900/50 p-4 rounded-xl border border-slate-800 space-y-3">
+                              <div className="flex justify-between items-center text-xs border-b border-slate-800/60 pb-2">
+                                <span className="font-bold text-rose-350 text-sm">{day.thuTrongTuan}</span>
+                                <span className="text-slate-400">
+                                  Phần ăn: <span className="font-extrabold text-rose-450 font-mono">{formatVND(day.tienMoiNguoi)}</span>
+                                </span>
+                              </div>
+                              
+                              <div className="space-y-1.5">
+                                <div className="flex justify-between items-center text-xs">
+                                  <span className="text-slate-350">Ăn nợ của:</span>
+                                  <span className="font-medium text-slate-300">
+                                    {day.nguoiTraKhac.map((p) => p.ten).join(', ')}
                                   </span>
                                 </div>
-                              ))}
+                                <div className="flex justify-between items-center text-xs">
+                                  <span className="text-slate-350">Số tiền nợ bữa này:</span>
+                                  <span className="font-mono text-rose-400 font-extrabold">
+                                    {formatVND(day.soTienNoBuaNay)}
+                                  </span>
+                                </div>
+                              </div>
                             </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                 </div>
