@@ -63,48 +63,115 @@ function tinhTienBuoiToi(
   });
 }
 
-function toiUuChuyenKhoan(
-  balances: { thanhVienId: number; ten: string; netBalance: number }[]
+function tinhChuyenKhoanTrucTiep(
+  tatCaThanhVien: { id: number; ten: string }[],
+  tatCaBuaToi: any[]
 ): any[] {
-  const creditors = balances
-    .filter((b) => b.netBalance > 0.01)
-    .map((b) => ({ ...b, amount: b.netBalance }))
-    .sort((a, b) => b.amount - a.amount);
+  // map lưu trữ số tiền nợ song phương: pairwiseDebts[tuThanhVienId][denThanhVienId] = số tiền nợ dồn tích
+  const pairwiseDebts: { [key: number]: { [key: number]: number } } = {};
 
-  const debtors = balances
-    .filter((b) => b.netBalance < -0.01)
-    .map((b) => ({ ...b, amount: Math.abs(b.netBalance) }))
-    .sort((a, b) => b.amount - a.amount);
+  // Khởi tạo map nợ song phương bằng 0
+  for (const tv1 of tatCaThanhVien) {
+    pairwiseDebts[tv1.id] = {};
+    for (const tv2 of tatCaThanhVien) {
+      pairwiseDebts[tv1.id][tv2.id] = 0;
+    }
+  }
 
+  // Duyệt qua từng bữa ăn
+  for (const buaToi of tatCaBuaToi) {
+    const tongTien = buaToi.tongTien;
+    const nguoiAnIds = buaToi.nguoiAnIds;
+    const nguoiTraTienList = buaToi.nguoiTraTien; // { thanhVienId: number; soTienDaTra: number }[]
+
+    if (!nguoiAnIds || nguoiAnIds.length === 0 || tongTien <= 0) {
+      continue;
+    }
+
+    const soNguoiAn = nguoiAnIds.length;
+    const tienMoiNguoi = tongTien / soNguoiAn;
+
+    // Tính balance của từng người cho bữa này
+    // balance = số tiền đã trả - số tiền phải trả (nếu ăn)
+    const dinnerBalances: { [key: number]: number } = {};
+    for (const tv of tatCaThanhVien) {
+      dinnerBalances[tv.id] = 0;
+    }
+
+    // Cộng số tiền đã trả
+    for (const p of nguoiTraTienList) {
+      dinnerBalances[p.thanhVienId] = (dinnerBalances[p.thanhVienId] || 0) + p.soTienDaTra;
+    }
+
+    // Trừ số tiền ăn
+    for (const eaterId of nguoiAnIds) {
+      dinnerBalances[eaterId] = (dinnerBalances[eaterId] || 0) - tienMoiNguoi;
+    }
+
+    // Phân loại chủ nợ (balance > 0) và con nợ (balance < 0) của bữa này
+    const creditors: { id: number; amount: number }[] = [];
+    const debtors: { id: number; amount: number }[] = [];
+
+    for (const tv of tatCaThanhVien) {
+      const bal = dinnerBalances[tv.id];
+      if (bal > 0.01) {
+        creditors.push({ id: tv.id, amount: bal });
+      } else if (bal < -0.01) {
+        debtors.push({ id: tv.id, amount: Math.abs(bal) });
+      }
+    }
+
+    const sumCredits = creditors.reduce((sum, c) => sum + c.amount, 0);
+
+    if (sumCredits > 0.01) {
+      // Phân bổ nợ của từng debtor cho từng creditor theo tỷ lệ đóng góp của creditor
+      for (const d of debtors) {
+        for (const c of creditors) {
+          const debtShare = d.amount * (c.amount / sumCredits);
+          pairwiseDebts[d.id][c.id] += debtShare;
+        }
+      }
+    }
+  }
+
+  // Thực hiện đối trừ song phương (A nợ B vs B nợ A)
   const giaoDichs: any[] = [];
+  const ids = tatCaThanhVien.map(tv => tv.id);
 
-  let cIdx = 0;
-  let dIdx = 0;
+  for (let i = 0; i < ids.length; i++) {
+    for (let j = i + 1; j < ids.length; j++) {
+      const u1 = ids[i];
+      const u2 = ids[j];
 
-  while (cIdx < creditors.length && dIdx < debtors.length) {
-    const creditor = creditors[cIdx];
-    const debtor = debtors[dIdx];
+      const u1OwesU2 = pairwiseDebts[u1][u2] || 0;
+      const u2OwesU1 = pairwiseDebts[u2][u1] || 0;
 
-    const transferAmount = Math.min(creditor.amount, debtor.amount);
+      const tv1 = tatCaThanhVien.find(tv => tv.id === u1)!;
+      const tv2 = tatCaThanhVien.find(tv => tv.id === u2)!;
 
-    if (transferAmount > 0.01) {
-      giaoDichs.push({
-        tuThanhVienId: debtor.thanhVienId,
-        tuTen: debtor.ten,
-        denThanhVienId: creditor.thanhVienId,
-        denTen: creditor.ten,
-        soTien: Math.round(transferAmount * 100) / 100,
-      });
-    }
-
-    creditor.amount -= transferAmount;
-    debtor.amount -= transferAmount;
-
-    if (creditor.amount <= 0.01) {
-      cIdx++;
-    }
-    if (debtor.amount <= 0.01) {
-      dIdx++;
+      if (u1OwesU2 > u2OwesU1) {
+        const netDebt = u1OwesU2 - u2OwesU1;
+        if (netDebt > 0.01) {
+          giaoDichs.push({
+            tuThanhVienId: u1,
+            tuTen: tv1.ten,
+            denThanhVienId: u2,
+            denTen: tv2.ten,
+            soTien: Math.round(netDebt * 100) / 100,
+          });
+        }
+      } else if (u2OwesU1 > u1OwesU2) {
+        const netDebt = u2OwesU1 - u1OwesU2;
+        if (netDebt > 0.01) {
+          giaoDichs.push({
+            tuThanhVienId: u2,
+            tuTen: tv2.ten,
+            denThanhVienId: u1,
+            denTen: tv1.ten,
+            soTien: Math.round(netDebt * 100) / 100,
+          });
+        }
+      }
     }
   }
 
@@ -400,14 +467,8 @@ app.get('/api/tong-ket-tuan', async (req, res) => {
       };
     });
 
-    // Tối ưu hóa các giao dịch chuyển khoản
-    const danhSachChuyenKhoan = toiUuChuyenKhoan(
-      chiTietTongKet.map((ct) => ({
-        thanhVienId: ct.thanhVienId,
-        ten: ct.ten,
-        netBalance: ct.netBalance,
-      }))
-    );
+    // Tính toán đối trừ chuyển khoản trực tiếp song phương
+    const danhSachChuyenKhoan = tinhChuyenKhoanTrucTiep(tatCaThanhVien, tatCaBuaToi);
 
     return res.json({
       chiTietTongKet,
