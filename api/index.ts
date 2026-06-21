@@ -190,14 +190,14 @@ app.get('/api', (req, res) => {
 // 1. Thêm thành viên
 app.post('/api/them-thanh-vien', async (req, res) => {
   try {
-    const { ten, maNganHang, soTaiKhoan, tenTaiKhoan } = req.body;
+    const { ten, maNganHang, soTaiKhoan, tenTaiKhoan, qrCodeImage } = req.body;
     if (!ten || typeof ten !== 'string' || ten.trim() === '') {
       return res.status(400).json({ error: 'Tên thành viên không hợp lệ.' });
     }
 
     const result = await pool.query(
-      'INSERT INTO thanh_vien (ten, ma_ngan_hang, so_tai_khoan, ten_tai_khoan) VALUES ($1, $2, $3, $4) RETURNING id, ten, ma_ngan_hang as "maNganHang", so_tai_khoan as "soTaiKhoan", ten_tai_khoan as "tenTaiKhoan"',
-      [ten.trim(), maNganHang || null, soTaiKhoan || null, tenTaiKhoan || null]
+      'INSERT INTO thanh_vien (ten, ma_ngan_hang, so_tai_khoan, ten_tai_khoan, qr_code_image) VALUES ($1, $2, $3, $4, $5) RETURNING id, ten, ma_ngan_hang as "maNganHang", so_tai_khoan as "soTaiKhoan", ten_tai_khoan as "tenTaiKhoan", qr_code_image as "qrCodeImage"',
+      [ten.trim(), maNganHang || null, soTaiKhoan || null, tenTaiKhoan || null, qrCodeImage || null]
     );
     return res.status(201).json(result.rows[0]);
   } catch (error: any) {
@@ -210,7 +210,7 @@ app.post('/api/them-thanh-vien', async (req, res) => {
 app.get('/api/danh-sach-thanh-vien', async (req, res) => {
   try {
     const result = await pool.query(
-      'SELECT id, ten, ma_ngan_hang as "maNganHang", so_tai_khoan as "soTaiKhoan", ten_tai_khoan as "tenTaiKhoan" FROM thanh_vien ORDER BY id ASC'
+      'SELECT id, ten, ma_ngan_hang as "maNganHang", so_tai_khoan as "soTaiKhoan", ten_tai_khoan as "tenTaiKhoan", qr_code_image as "qrCodeImage" FROM thanh_vien ORDER BY id ASC'
     );
     return res.json(result.rows);
   } catch (error: any) {
@@ -223,15 +223,15 @@ app.get('/api/danh-sach-thanh-vien', async (req, res) => {
 app.put('/api/sua-thanh-vien/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { ten, maNganHang, soTaiKhoan, tenTaiKhoan } = req.body;
+    const { ten, maNganHang, soTaiKhoan, tenTaiKhoan, qrCodeImage } = req.body;
 
     if (!ten || typeof ten !== 'string' || ten.trim() === '') {
       return res.status(400).json({ error: 'Tên thành viên không hợp lệ.' });
     }
 
     const result = await pool.query(
-      'UPDATE thanh_vien SET ten = $1, ma_ngan_hang = $2, so_tai_khoan = $3, ten_tai_khoan = $4 WHERE id = $5 RETURNING id, ten, ma_ngan_hang as "maNganHang", so_tai_khoan as "soTaiKhoan", ten_tai_khoan as "tenTaiKhoan"',
-      [ten.trim(), maNganHang || null, soTaiKhoan || null, tenTaiKhoan || null, Number(id)]
+      'UPDATE thanh_vien SET ten = $1, ma_ngan_hang = $2, so_tai_khoan = $3, ten_tai_khoan = $4, qr_code_image = $5 WHERE id = $6 RETURNING id, ten, ma_ngan_hang as "maNganHang", so_tai_khoan as "soTaiKhoan", ten_tai_khoan as "tenTaiKhoan", qr_code_image as "qrCodeImage"',
+      [ten.trim(), maNganHang || null, soTaiKhoan || null, tenTaiKhoan || null, qrCodeImage || null, Number(id)]
     );
     return res.json(result.rows[0]);
   } catch (error: any) {

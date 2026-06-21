@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { User, Trash2, Edit2, X, UserPlus, Loader2, QrCode, CreditCard, ChevronDown, ChevronUp } from 'lucide-react';
+import React, { useState } from 'react';
+import { User, Trash2, Edit2, X, UserPlus, Loader2, QrCode, CreditCard, ChevronDown, ChevronUp, Image, Trash } from 'lucide-react';
 import { ThanhVien } from '../services/api';
 
 interface DanhSachThanhVienProps {
   thanhViens: ThanhVien[];
-  onAdd: (ten: string, maNganHang?: string | null, soTaiKhoan?: string | null, tenTaiKhoan?: string | null) => Promise<void>;
-  onUpdate: (id: number, ten: string, maNganHang?: string | null, soTaiKhoan?: string | null, tenTaiKhoan?: string | null) => Promise<void>;
+  onAdd: (ten: string, maNganHang?: string | null, soTaiKhoan?: string | null, tenTaiKhoan?: string | null, qrCodeImage?: string | null) => Promise<void>;
+  onUpdate: (id: number, ten: string, maNganHang?: string | null, soTaiKhoan?: string | null, tenTaiKhoan?: string | null, qrCodeImage?: string | null) => Promise<void>;
   onDelete: (id: number) => Promise<void>;
   loading: boolean;
 }
@@ -20,47 +20,33 @@ export const DanhSachThanhVien: React.FC<DanhSachThanhVienProps> = React.memo(({
   const [newTen, setNewTen] = useState('');
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editingTen, setEditingTen] = useState('');
-  const [editingMaNganHang, setEditingMaNganHang] = useState('');
-  const [editingSoTaiKhoan, setEditingSoTaiKhoan] = useState('');
-  const [editingTenTenTaiKhoan, setEditingTenTaiKhoan] = useState('');
+  const [editingQrCodeImage, setEditingQrCodeImage] = useState<string>('');
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
-  // State thêm ngân hàng khi tạo
-  const [showBankForm, setShowBankForm] = useState(false);
-  const [newMaNganHang, setNewMaNganHang] = useState('');
-  const [newSoTaiKhoan, setNewSoTaiKhoan] = useState('');
-  const [newTenTaiKhoan, setNewTenTaiKhoan] = useState('');
+  // State thêm ảnh QR khi tạo mới
+  const [showQrForm, setShowQrForm] = useState(false);
+  const [newQrCodeImage, setNewQrCodeImage] = useState<string>('');
 
-  // Danh sách ngân hàng
-  const [banks, setBanks] = useState<{ code: string; name: string; shortName: string; bin: string }[]>([]);
+  const handleImageChange = (
+    e: React.ChangeEvent<HTMLInputElement>,
+    callback: (base64: string) => void
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-  useEffect(() => {
-    fetch('https://api.vietqr.io/v2/banks')
-      .then((res) => res.json())
-      .then((res) => {
-        if (res && res.data) {
-          setBanks(res.data);
-        }
-      })
-      .catch((err) => {
-        console.error('Lỗi khi tải danh sách ngân hàng:', err);
-        // Fallback danh sách các ngân hàng phổ biến nhất
-        setBanks([
-          { code: 'VCB', name: 'Ngoại thương Việt Nam', shortName: 'Vietcombank', bin: '970436' },
-          { code: 'TCB', name: 'Kỹ thương Việt Nam', shortName: 'Techcombank', bin: '970407' },
-          { code: 'MB', name: 'Quân đội', shortName: 'MBBank', bin: '970422' },
-          { code: 'BIDV', name: 'Đầu tư và Phát triển Việt Nam', shortName: 'BIDV', bin: '970418' },
-          { code: 'CTG', name: 'Công thương Việt Nam', shortName: 'VietinBank', bin: '970415' },
-          { code: 'ACB', name: 'Á Châu', shortName: 'ACB', bin: '970416' },
-          { code: 'TPB', name: 'Tiên Phong', shortName: 'TPBank', bin: '970423' },
-          { code: 'VPB', name: 'Việt Nam Thịnh Vượng', shortName: 'VPBank', bin: '970432' },
-          { code: 'VIB', name: 'Quốc tế', shortName: 'VIB', bin: '970441' },
-          { code: 'SHB', name: 'Sài Gòn - Hà Nội', shortName: 'SHB', bin: '970443' },
-          { code: 'STB', name: 'Sài Gòn Thương Tín', shortName: 'Sacombank', bin: '970403' },
-          { code: 'HDB', name: 'Phát triển Nhà TP.HCM', shortName: 'HDBank', bin: '970437' },
-        ]);
-      });
-  }, []);
+    if (file.size > 1.5 * 1024 * 1024) {
+      alert('Kích thước ảnh quá lớn! Vui lòng chọn ảnh nhỏ hơn 1.5MB.');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      if (typeof reader.result === 'string') {
+        callback(reader.result);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -69,15 +55,14 @@ export const DanhSachThanhVien: React.FC<DanhSachThanhVienProps> = React.memo(({
     try {
       await onAdd(
         newTen.trim(),
-        newMaNganHang || null,
-        newSoTaiKhoan || null,
-        newTenTaiKhoan.toUpperCase().trim() || null
+        null,
+        null,
+        null,
+        newQrCodeImage || null
       );
       setNewTen('');
-      setNewMaNganHang('');
-      setNewSoTaiKhoan('');
-      setNewTenTaiKhoan('');
-      setShowBankForm(false);
+      setNewQrCodeImage('');
+      setShowQrForm(false);
     } catch (err) {
       console.error(err);
     } finally {
@@ -88,17 +73,13 @@ export const DanhSachThanhVien: React.FC<DanhSachThanhVienProps> = React.memo(({
   const handleStartEdit = (tv: ThanhVien) => {
     setEditingId(tv.id);
     setEditingTen(tv.ten);
-    setEditingMaNganHang(tv.maNganHang || '');
-    setEditingSoTaiKhoan(tv.soTaiKhoan || '');
-    setEditingTenTaiKhoan(tv.tenTaiKhoan || '');
+    setEditingQrCodeImage(tv.qrCodeImage || '');
   };
 
   const handleCancelEdit = () => {
     setEditingId(null);
     setEditingTen('');
-    setEditingMaNganHang('');
-    setEditingSoTaiKhoan('');
-    setEditingTenTaiKhoan('');
+    setEditingQrCodeImage('');
   };
 
   const handleSaveEdit = async (id: number) => {
@@ -108,9 +89,10 @@ export const DanhSachThanhVien: React.FC<DanhSachThanhVienProps> = React.memo(({
       await onUpdate(
         id,
         editingTen.trim(),
-        editingMaNganHang || null,
-        editingSoTaiKhoan || null,
-        editingTenTenTaiKhoan.toUpperCase().trim() || null
+        null,
+        null,
+        null,
+        editingQrCodeImage || null
       );
       setEditingId(null);
     } catch (err) {
@@ -142,7 +124,7 @@ export const DanhSachThanhVien: React.FC<DanhSachThanhVienProps> = React.memo(({
         </div>
         <div>
           <h2 className="text-xl font-bold text-white tracking-wide">Thành Viên Nhóm</h2>
-          <p className="text-xs text-slate-400">Quản lý người ăn chung & tài khoản nhận tiền</p>
+          <p className="text-xs text-slate-400">Quản lý người ăn chung & tải ảnh QR nhận tiền</p>
         </div>
       </div>
 
@@ -170,55 +152,48 @@ export const DanhSachThanhVien: React.FC<DanhSachThanhVienProps> = React.memo(({
           </button>
         </div>
 
-        {/* Nút toggle nhập ngân hàng */}
+        {/* Nút toggle thêm ảnh QR */}
         <button
           type="button"
-          onClick={() => setShowBankForm(!showBankForm)}
+          onClick={() => setShowQrForm(!showQrForm)}
           className="text-xs text-slate-400 hover:text-indigo-400 transition-colors flex items-center gap-1 cursor-pointer select-none font-medium"
         >
-          {showBankForm ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-          {showBankForm ? 'Ẩn thiết lập QR ngân hàng' : 'Thêm thiết lập QR ngân hàng (Tùy chọn)'}
+          {showQrForm ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+          {showQrForm ? 'Ẩn thiết lập QR ngân hàng' : 'Thêm ảnh QR ngân hàng (Tùy chọn)'}
         </button>
 
-        {/* Cấu hình ngân hàng mở rộng */}
-        {showBankForm && (
-          <div className="space-y-2.5 pt-2 border-t border-slate-800/50 animate-in fade-in slide-in-from-top-1 duration-200">
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="text-[10px] text-slate-500 font-bold block mb-1">NGÂN HÀNG</label>
-                <select
-                  value={newMaNganHang}
-                  onChange={(e) => setNewMaNganHang(e.target.value)}
-                  className="w-full bg-slate-900/80 border border-slate-750 rounded-lg px-2.5 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
-                >
-                  <option value="">-- Chọn ngân hàng --</option>
-                  {banks.map((b) => (
-                    <option key={b.bin} value={b.bin}>
-                      {b.shortName}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="text-[10px] text-slate-500 font-bold block mb-1">SỐ TÀI KHOẢN</label>
-                <input
-                  type="text"
-                  value={newSoTaiKhoan}
-                  onChange={(e) => setNewSoTaiKhoan(e.target.value)}
-                  className="w-full bg-slate-900/80 border border-slate-750 rounded-lg px-2.5 py-1.5 text-xs text-slate-100 placeholder-slate-550 focus:outline-none focus:border-indigo-500"
-                  placeholder="Số tài khoản"
-                />
-              </div>
-            </div>
-            <div>
-              <label className="text-[10px] text-slate-500 font-bold block mb-1">TÊN TÀI KHOẢN (KHÔNG DẤU)</label>
-              <input
-                type="text"
-                value={newTenTaiKhoan}
-                onChange={(e) => setNewTenTaiKhoan(e.target.value)}
-                className="w-full bg-slate-900/80 border border-slate-750 rounded-lg px-2.5 py-1.5 text-xs text-slate-100 placeholder-slate-550 focus:outline-none focus:border-indigo-500 uppercase"
-                placeholder="Ví dụ: NGUYEN VAN A"
-              />
+        {/* Cấu hình thêm ảnh QR */}
+        {showQrForm && (
+          <div className="space-y-3 pt-3 border-t border-slate-800/50 animate-in fade-in slide-in-from-top-1 duration-200">
+            <div className="flex flex-col items-center justify-center border-2 border-dashed border-slate-700 hover:border-indigo-500/50 rounded-xl p-4 transition-colors bg-slate-900/40 relative">
+              {newQrCodeImage ? (
+                <div className="flex flex-col items-center space-y-2 w-full">
+                  <img
+                    src={newQrCodeImage}
+                    alt="Xem trước QR"
+                    className="w-32 h-32 object-contain rounded-lg border border-slate-800"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setNewQrCodeImage('')}
+                    className="text-[10px] text-rose-450 hover:text-rose-400 flex items-center gap-1 font-semibold"
+                  >
+                    <Trash className="w-3 h-3" /> Xóa ảnh và chọn lại
+                  </button>
+                </div>
+              ) : (
+                <label className="flex flex-col items-center justify-center cursor-pointer space-y-1.5 py-2 w-full">
+                  <Image className="w-7 h-7 text-slate-500" />
+                  <span className="text-xs text-slate-300 font-medium">Bấm để tải ảnh QR lên</span>
+                  <span className="text-[9px] text-slate-500">Hỗ trợ PNG, JPG (Tối đa 1.5MB)</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => handleImageChange(e, setNewQrCodeImage)}
+                    className="hidden"
+                  />
+                </label>
+              )}
             </div>
           </div>
         )}
@@ -258,49 +233,47 @@ export const DanhSachThanhVien: React.FC<DanhSachThanhVienProps> = React.memo(({
                       type="text"
                       value={editingTen}
                       onChange={(e) => setEditingTen(e.target.value)}
-                      className="w-full bg-slate-900 border border-slate-750 rounded-lg px-2.5 py-1 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
+                      className="w-full bg-slate-900 border border-slate-750 rounded-lg px-2.5 py-2 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
                       placeholder="Tên thành viên"
                       autoFocus
                     />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="text-[10px] text-slate-500 font-bold block mb-1">NGÂN HÀNG</label>
-                      <select
-                        value={editingMaNganHang}
-                        onChange={(e) => setEditingMaNganHang(e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-750 rounded-lg px-2.5 py-1 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
-                      >
-                        <option value="">-- Chọn --</option>
-                        {banks.map((b) => (
-                          <option key={b.bin} value={b.bin}>
-                            {b.shortName}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="text-[10px] text-slate-500 font-bold block mb-1">SỐ TÀI KHOẢN</label>
-                      <input
-                        type="text"
-                        value={editingSoTaiKhoan}
-                        onChange={(e) => setEditingSoTaiKhoan(e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-750 rounded-lg px-2.5 py-1 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
-                        placeholder="Số tài khoản"
-                      />
-                    </div>
-                  </div>
-
                   <div>
-                    <label className="text-[10px] text-slate-500 font-bold block mb-1">TÊN TÀI KHOẢN (KHÔNG DẤU)</label>
-                    <input
-                      type="text"
-                      value={editingTenTenTaiKhoan}
-                      onChange={(e) => setEditingTenTaiKhoan(e.target.value)}
-                      className="w-full bg-slate-900 border border-slate-750 rounded-lg px-2.5 py-1 text-xs text-slate-100 focus:outline-none focus:border-indigo-500 uppercase"
-                      placeholder="Ví dụ: NGUYEN VAN A"
-                    />
+                    <label className="text-[10px] text-slate-500 font-bold block mb-1">ẢNH QR THANH TOÁN</label>
+                    <div className="flex items-center gap-3 border border-slate-750 bg-slate-900 rounded-lg p-2 mt-1">
+                      {editingQrCodeImage ? (
+                        <div className="flex items-center justify-between w-full">
+                          <div className="flex items-center gap-2">
+                            <img
+                              src={editingQrCodeImage}
+                              alt="Xem trước QR sửa"
+                              className="w-10 h-10 object-contain rounded border border-slate-800 bg-white"
+                            />
+                            <span className="text-[10px] text-emerald-400 font-medium">Đã tải ảnh lên</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setEditingQrCodeImage('')}
+                            className="p-1 rounded bg-slate-850 hover:bg-slate-800 text-rose-400 hover:text-rose-350 transition-colors"
+                            title="Xóa ảnh QR"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ) : (
+                        <label className="flex items-center justify-center gap-2 cursor-pointer py-1.5 w-full">
+                          <Image className="w-4 h-4 text-slate-400" />
+                          <span className="text-[11px] text-slate-300 font-medium">Bấm để tải ảnh QR lên</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={(e) => handleImageChange(e, setEditingQrCodeImage)}
+                            className="hidden"
+                          />
+                        </label>
+                      )}
+                    </div>
                   </div>
 
                   <div className="flex justify-end gap-1.5 mt-1 border-t border-slate-800/50 pt-2">
@@ -330,16 +303,16 @@ export const DanhSachThanhVien: React.FC<DanhSachThanhVienProps> = React.memo(({
                   <div className="flex-1">
                     <span className="text-sm font-bold text-slate-200 flex items-center gap-1.5">
                       {tv.ten}
-                      {tv.soTaiKhoan && (
-                        <span className="p-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" title="Đã cấu hình mã QR ngân hàng">
+                      {tv.qrCodeImage && (
+                        <span className="p-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" title="Đã cài đặt ảnh QR thanh toán">
                           <QrCode className="w-3 h-3" />
                         </span>
                       )}
                     </span>
-                    {tv.soTaiKhoan && (
+                    {tv.qrCodeImage && (
                       <span className="block text-[10px] text-slate-400 mt-1 flex items-center gap-1 font-mono">
                         <CreditCard className="w-3.5 h-3.5 text-indigo-400/80" />
-                        {banks.find((b) => b.bin === tv.maNganHang)?.shortName || tv.maNganHang} - {tv.soTaiKhoan}
+                        Đã cài đặt ảnh QR thanh toán
                       </span>
                     )}
                   </div>

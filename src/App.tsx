@@ -79,12 +79,9 @@ function App() {
   const [isSummaryModalOpen, setIsSummaryModalOpen] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [activeQRData, setActiveQRData] = useState<{
-    maNganHang: string;
-    soTaiKhoan: string;
-    tenTaiKhoan?: string | null;
-    soTien: number;
-    description: string;
+    qrCodeImage: string;
     denTen: string;
+    soTien: number;
     tuTen: string;
   } | null>(null);
 
@@ -140,10 +137,11 @@ function App() {
     ten: string,
     maNganHang?: string | null,
     soTaiKhoan?: string | null,
-    tenTaiKhoan?: string | null
+    tenTaiKhoan?: string | null,
+    qrCodeImage?: string | null
   ) => {
     try {
-      const tv = await addThanhVien(ten, maNganHang, soTaiKhoan, tenTaiKhoan);
+      const tv = await addThanhVien(ten, maNganHang, soTaiKhoan, tenTaiKhoan, qrCodeImage);
       setThanhViens((prev) => [...prev, tv]);
       await fetchWeeklyData(selectedWeekStart);
     } catch (err) {
@@ -157,10 +155,11 @@ function App() {
     ten: string,
     maNganHang?: string | null,
     soTaiKhoan?: string | null,
-    tenTaiKhoan?: string | null
+    tenTaiKhoan?: string | null,
+    qrCodeImage?: string | null
   ) => {
     try {
-      const updated = await updateThanhVien(id, ten, maNganHang, soTaiKhoan, tenTaiKhoan);
+      const updated = await updateThanhVien(id, ten, maNganHang, soTaiKhoan, tenTaiKhoan, qrCodeImage);
       setThanhViens((prev) => prev.map((x) => (x.id === id ? updated : x)));
       await fetchWeeklyData(selectedWeekStart);
     } catch (err) {
@@ -299,14 +298,7 @@ function App() {
     return `${y}-${m}-${date}`;
   };
 
-  // Helper loại bỏ dấu tiếng Việt để tạo nội dung VietQR không bị lỗi
-  const removeAccents = (str: string) => {
-    return str
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .replace(/đ/g, 'd')
-      .replace(/Đ/g, 'D');
-  };
+
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8 md:py-12 flex flex-col min-h-screen">
@@ -418,7 +410,7 @@ function App() {
         if (!activeCreditor) return null;
 
         const creditorMember = thanhViens.find(tv => tv.id === activeCreditor.thanhVienId);
-        const hasBankInfo = !!(creditorMember?.maNganHang && creditorMember?.soTaiKhoan);
+        const hasQrCode = !!creditorMember?.qrCodeImage;
 
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200">
@@ -478,22 +470,18 @@ function App() {
                                   {formatVND(gd.soTien)}
                                 </span>
                                  <div className="flex items-center gap-1.5">
-                                  {hasBankInfo && (
+                                  {hasQrCode && (
                                     <button
                                       onClick={() => {
-                                        const description = removeAccents(`${gd.tuTen} chuyen cho ${activeCreditor.ten}`);
                                         setActiveQRData({
-                                          maNganHang: creditorMember.maNganHang!,
-                                          soTaiKhoan: creditorMember.soTaiKhoan!,
-                                          tenTaiKhoan: creditorMember.tenTaiKhoan,
-                                          soTien: gd.soTien,
-                                          description,
+                                          qrCodeImage: creditorMember.qrCodeImage!,
                                           denTen: activeCreditor.ten,
+                                          soTien: gd.soTien,
                                           tuTen: gd.tuTen,
                                         });
                                       }}
                                       className="p-2 rounded-lg border bg-slate-950 border-slate-850 text-slate-400 hover:text-emerald-400 hover:border-emerald-500/30 transition-all duration-200 flex items-center justify-center cursor-pointer"
-                                      title="Quét mã QR chuyển khoản VietQR"
+                                      title="Hiển thị mã QR thanh toán"
                                     >
                                       <QrCode className="w-3.5 h-3.5" />
                                     </button>
@@ -587,7 +575,7 @@ function App() {
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-900/50">
               <h3 className="text-md font-bold text-white flex items-center gap-2">
                 <QrCode className="w-5 h-5 text-emerald-400" />
-                Mã QR Chuyển Khoản
+                Mã QR Thanh Toán
               </h3>
               <button
                 onClick={() => setActiveQRData(null)}
@@ -599,15 +587,11 @@ function App() {
 
             {/* QR Image & Details */}
             <div className="p-6 flex flex-col items-center space-y-4">
-              <div className="bg-white p-3 rounded-2xl border border-slate-850 shadow-inner">
+              <div className="bg-slate-950 p-2 rounded-2xl border border-slate-800 shadow-inner flex justify-center items-center max-w-full overflow-hidden">
                 <img
-                  src={`https://img.vietqr.io/image/${activeQRData.maNganHang}-${activeQRData.soTaiKhoan}-compact2.png?amount=${activeQRData.soTien}&addInfo=${encodeURIComponent(activeQRData.description)}&accountName=${encodeURIComponent(activeQRData.tenTaiKhoan || '')}`}
+                  src={activeQRData.qrCodeImage}
                   alt="Mã QR Chuyển Khoản"
-                  className="w-64 h-64 object-contain rounded-lg"
-                  onError={(e) => {
-                    console.error('Không thể load mã QR VietQR');
-                    (e.target as HTMLElement).style.display = 'none';
-                  }}
+                  className="max-w-xs max-h-72 object-contain rounded-lg shadow-md"
                 />
               </div>
 
@@ -616,25 +600,15 @@ function App() {
                   <span className="text-slate-400">Người nhận:</span>
                   <span className="font-bold text-slate-200">{activeQRData.denTen}</span>
                 </div>
-                {activeQRData.tenTaiKhoan && (
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">Chủ tài khoản:</span>
-                    <span className="font-bold text-slate-200 uppercase">{activeQRData.tenTaiKhoan}</span>
-                  </div>
-                )}
                 <div className="flex justify-between">
-                  <span className="text-slate-400">Số tài khoản:</span>
-                  <span className="font-mono font-bold text-indigo-300">{activeQRData.soTaiKhoan}</span>
+                  <span className="text-slate-400">Người gửi:</span>
+                  <span className="font-bold text-slate-200">{activeQRData.tuTen}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-400">Số tiền chuyển:</span>
                   <span className="font-mono font-extrabold text-emerald-400 text-sm">
                     {formatVND(activeQRData.soTien)}
                   </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Nội dung chuyển:</span>
-                  <span className="font-mono font-bold text-indigo-300">{activeQRData.description}</span>
                 </div>
               </div>
             </div>

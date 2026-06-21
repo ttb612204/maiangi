@@ -10,6 +10,7 @@ export interface ThanhVien {
   maNganHang?: string | null;
   soTaiKhoan?: string | null;
   tenTaiKhoan?: string | null;
+  qrCodeImage?: string | null;
 }
 
 export interface NguoiTraTien {
@@ -56,9 +57,10 @@ export const addThanhVien = async (
   ten: string,
   maNganHang?: string | null,
   soTaiKhoan?: string | null,
-  tenTaiKhoan?: string | null
+  tenTaiKhoan?: string | null,
+  qrCodeImage?: string | null
 ): Promise<ThanhVien> => {
-  const response = await api.post('/them-thanh-vien', { ten, maNganHang, soTaiKhoan, tenTaiKhoan });
+  const response = await api.post('/them-thanh-vien', { ten, maNganHang, soTaiKhoan, tenTaiKhoan, qrCodeImage });
   return response.data;
 };
 
@@ -67,9 +69,10 @@ export const updateThanhVien = async (
   ten: string,
   maNganHang?: string | null,
   soTaiKhoan?: string | null,
-  tenTaiKhoan?: string | null
+  tenTaiKhoan?: string | null,
+  qrCodeImage?: string | null
 ): Promise<ThanhVien> => {
-  const response = await api.put(`/sua-thanh-vien/${id}`, { ten, maNganHang, soTaiKhoan, tenTaiKhoan });
+  const response = await api.put(`/sua-thanh-vien/${id}`, { ten, maNganHang, soTaiKhoan, tenTaiKhoan, qrCodeImage });
   return response.data;
 };
 
