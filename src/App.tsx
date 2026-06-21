@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { ChefHat, AlertCircle, X, Landmark, CalendarDays, Coins, Copy, Check } from 'lucide-react';
+import { ChefHat, AlertCircle, X, Landmark, CalendarDays, Coins, Copy, Check, QrCode } from 'lucide-react';
 import {
   getThanhViens,
   addThanhVien,
@@ -78,6 +78,15 @@ function App() {
   const [selectedCreditorId, setSelectedCreditorId] = useState<number | null>(null);
   const [isSummaryModalOpen, setIsSummaryModalOpen] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [activeQRData, setActiveQRData] = useState<{
+    maNganHang: string;
+    soTaiKhoan: string;
+    tenTaiKhoan?: string | null;
+    soTien: number;
+    description: string;
+    denTen: string;
+    tuTen: string;
+  } | null>(null);
 
   const daysOfWeek = useMemo(() => getDaysOfWeek(selectedWeekStart), [selectedWeekStart]);
 
@@ -127,9 +136,14 @@ function App() {
   }, [fetchWeeklyData, selectedWeekStart]);
 
   // Các hàm xử lý Thành viên
-  const handleAddMember = useCallback(async (ten: string) => {
+  const handleAddMember = useCallback(async (
+    ten: string,
+    maNganHang?: string | null,
+    soTaiKhoan?: string | null,
+    tenTaiKhoan?: string | null
+  ) => {
     try {
-      const tv = await addThanhVien(ten);
+      const tv = await addThanhVien(ten, maNganHang, soTaiKhoan, tenTaiKhoan);
       setThanhViens((prev) => [...prev, tv]);
       await fetchWeeklyData(selectedWeekStart);
     } catch (err) {
@@ -138,9 +152,15 @@ function App() {
     }
   }, [fetchWeeklyData, selectedWeekStart]);
 
-  const handleUpdateMember = useCallback(async (id: number, ten: string) => {
+  const handleUpdateMember = useCallback(async (
+    id: number,
+    ten: string,
+    maNganHang?: string | null,
+    soTaiKhoan?: string | null,
+    tenTaiKhoan?: string | null
+  ) => {
     try {
-      const updated = await updateThanhVien(id, ten);
+      const updated = await updateThanhVien(id, ten, maNganHang, soTaiKhoan, tenTaiKhoan);
       setThanhViens((prev) => prev.map((x) => (x.id === id ? updated : x)));
       await fetchWeeklyData(selectedWeekStart);
     } catch (err) {
@@ -279,6 +299,15 @@ function App() {
     return `${y}-${m}-${date}`;
   };
 
+  // Helper loại bỏ dấu tiếng Việt để tạo nội dung VietQR không bị lỗi
+  const removeAccents = (str: string) => {
+    return str
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/đ/g, 'd')
+      .replace(/Đ/g, 'D');
+  };
+
   return (
     <div className="max-w-7xl mx-auto px-4 py-8 md:py-12 flex flex-col min-h-screen">
       {/* Header chính */}
@@ -388,6 +417,9 @@ function App() {
 
         if (!activeCreditor) return null;
 
+        const creditorMember = thanhViens.find(tv => tv.id === activeCreditor.thanhVienId);
+        const hasBankInfo = !!(creditorMember?.maNganHang && creditorMember?.soTaiKhoan);
+
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200">
             <div className="w-full max-w-4xl bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh] animate-in fade-in zoom-in-95 duration-200">
@@ -445,22 +477,44 @@ function App() {
                                 <span className="font-mono font-extrabold text-indigo-300 text-sm">
                                   {formatVND(gd.soTien)}
                                 </span>
-                                
-                                <button
-                                  onClick={() => handleCopyText(gd.tuTen, activeCreditor.ten, gd.soTien, copyKey)}
-                                  className={`p-2 rounded-lg border transition-all duration-200 flex items-center justify-center cursor-pointer ${
-                                    copiedKey === copyKey
-                                      ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400'
-                                      : 'bg-slate-950 border-slate-850 text-slate-400 hover:text-indigo-400 hover:border-indigo-500/30'
-                                  }`}
-                                  title="Copy cú pháp chuyển khoản"
-                                >
-                                  {copiedKey === copyKey ? (
-                                    <Check className="w-3.5 h-3.5" />
-                                  ) : (
-                                    <Copy className="w-3.5 h-3.5" />
+                                 <div className="flex items-center gap-1.5">
+                                  {hasBankInfo && (
+                                    <button
+                                      onClick={() => {
+                                        const description = removeAccents(`${gd.tuTen} chuyen cho ${activeCreditor.ten}`);
+                                        setActiveQRData({
+                                          maNganHang: creditorMember.maNganHang!,
+                                          soTaiKhoan: creditorMember.soTaiKhoan!,
+                                          tenTaiKhoan: creditorMember.tenTaiKhoan,
+                                          soTien: gd.soTien,
+                                          description,
+                                          denTen: activeCreditor.ten,
+                                          tuTen: gd.tuTen,
+                                        });
+                                      }}
+                                      className="p-2 rounded-lg border bg-slate-950 border-slate-850 text-slate-400 hover:text-emerald-400 hover:border-emerald-500/30 transition-all duration-200 flex items-center justify-center cursor-pointer"
+                                      title="Quét mã QR chuyển khoản VietQR"
+                                    >
+                                      <QrCode className="w-3.5 h-3.5" />
+                                    </button>
                                   )}
-                                </button>
+
+                                  <button
+                                    onClick={() => handleCopyText(gd.tuTen, activeCreditor.ten, gd.soTien, copyKey)}
+                                    className={`p-2 rounded-lg border transition-all duration-200 flex items-center justify-center cursor-pointer ${
+                                      copiedKey === copyKey
+                                        ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400'
+                                        : 'bg-slate-950 border-slate-850 text-slate-400 hover:text-indigo-400 hover:border-indigo-500/30'
+                                    }`}
+                                    title="Copy cú pháp chuyển khoản"
+                                  >
+                                    {copiedKey === copyKey ? (
+                                      <Check className="w-3.5 h-3.5" />
+                                    ) : (
+                                      <Copy className="w-3.5 h-3.5" />
+                                    )}
+                                  </button>
+                                </div>
                               </div>
                             </div>
                           );
@@ -524,6 +578,79 @@ function App() {
           </div>
         );
       })()}
+
+      {/* Sub-modal Mã QR Thanh Toán */}
+      {activeQRData && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200">
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-900/50">
+              <h3 className="text-md font-bold text-white flex items-center gap-2">
+                <QrCode className="w-5 h-5 text-emerald-400" />
+                Mã QR Chuyển Khoản
+              </h3>
+              <button
+                onClick={() => setActiveQRData(null)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* QR Image & Details */}
+            <div className="p-6 flex flex-col items-center space-y-4">
+              <div className="bg-white p-3 rounded-2xl border border-slate-850 shadow-inner">
+                <img
+                  src={`https://img.vietqr.io/image/${activeQRData.maNganHang}-${activeQRData.soTaiKhoan}-compact2.png?amount=${activeQRData.soTien}&addInfo=${encodeURIComponent(activeQRData.description)}&accountName=${encodeURIComponent(activeQRData.tenTaiKhoan || '')}`}
+                  alt="Mã QR Chuyển Khoản"
+                  className="w-64 h-64 object-contain rounded-lg"
+                  onError={(e) => {
+                    console.error('Không thể load mã QR VietQR');
+                    (e.target as HTMLElement).style.display = 'none';
+                  }}
+                />
+              </div>
+
+              <div className="w-full space-y-2 text-xs border-t border-slate-800 pt-4">
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Người nhận:</span>
+                  <span className="font-bold text-slate-200">{activeQRData.denTen}</span>
+                </div>
+                {activeQRData.tenTaiKhoan && (
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Chủ tài khoản:</span>
+                    <span className="font-bold text-slate-200 uppercase">{activeQRData.tenTaiKhoan}</span>
+                  </div>
+                )}
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Số tài khoản:</span>
+                  <span className="font-mono font-bold text-indigo-300">{activeQRData.soTaiKhoan}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Số tiền chuyển:</span>
+                  <span className="font-mono font-extrabold text-emerald-400 text-sm">
+                    {formatVND(activeQRData.soTien)}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Nội dung chuyển:</span>
+                  <span className="font-mono font-bold text-indigo-300">{activeQRData.description}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="flex justify-end px-6 py-4 border-t border-slate-800 bg-slate-900/50">
+              <button
+                onClick={() => setActiveQRData(null)}
+                className="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-250 rounded-xl transition-all cursor-pointer"
+              >
+                Đóng
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Footer */}
       <footer className="mt-16 text-center text-xs text-slate-650 pt-6 border-t border-slate-950">

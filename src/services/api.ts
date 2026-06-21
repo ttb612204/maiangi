@@ -7,6 +7,9 @@ const api = axios.create({
 export interface ThanhVien {
   id: number;
   ten: string;
+  maNganHang?: string | null;
+  soTaiKhoan?: string | null;
+  tenTaiKhoan?: string | null;
 }
 
 export interface NguoiTraTien {
@@ -49,13 +52,24 @@ export const getThanhViens = async (): Promise<ThanhVien[]> => {
   return response.data;
 };
 
-export const addThanhVien = async (ten: string): Promise<ThanhVien> => {
-  const response = await api.post('/them-thanh-vien', { ten });
+export const addThanhVien = async (
+  ten: string,
+  maNganHang?: string | null,
+  soTaiKhoan?: string | null,
+  tenTaiKhoan?: string | null
+): Promise<ThanhVien> => {
+  const response = await api.post('/them-thanh-vien', { ten, maNganHang, soTaiKhoan, tenTaiKhoan });
   return response.data;
 };
 
-export const updateThanhVien = async (id: number, ten: string): Promise<ThanhVien> => {
-  const response = await api.put(`/sua-thanh-vien/${id}`, { ten });
+export const updateThanhVien = async (
+  id: number,
+  ten: string,
+  maNganHang?: string | null,
+  soTaiKhoan?: string | null,
+  tenTaiKhoan?: string | null
+): Promise<ThanhVien> => {
+  const response = await api.put(`/sua-thanh-vien/${id}`, { ten, maNganHang, soTaiKhoan, tenTaiKhoan });
   return response.data;
 };
 

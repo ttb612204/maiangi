@@ -190,14 +190,14 @@ app.get('/api', (req, res) => {
 // 1. Thêm thành viên
 app.post('/api/them-thanh-vien', async (req, res) => {
   try {
-    const { ten } = req.body;
+    const { ten, maNganHang, soTaiKhoan, tenTaiKhoan } = req.body;
     if (!ten || typeof ten !== 'string' || ten.trim() === '') {
       return res.status(400).json({ error: 'Tên thành viên không hợp lệ.' });
     }
 
     const result = await pool.query(
-      'INSERT INTO thanh_vien (ten) VALUES ($1) RETURNING id, ten',
-      [ten.trim()]
+      'INSERT INTO thanh_vien (ten, ma_ngan_hang, so_tai_khoan, ten_tai_khoan) VALUES ($1, $2, $3, $4) RETURNING id, ten, ma_ngan_hang as "maNganHang", so_tai_khoan as "soTaiKhoan", ten_tai_khoan as "tenTaiKhoan"',
+      [ten.trim(), maNganHang || null, soTaiKhoan || null, tenTaiKhoan || null]
     );
     return res.status(201).json(result.rows[0]);
   } catch (error: any) {
@@ -209,7 +209,9 @@ app.post('/api/them-thanh-vien', async (req, res) => {
 // 2. Lấy danh sách thành viên
 app.get('/api/danh-sach-thanh-vien', async (req, res) => {
   try {
-    const result = await pool.query('SELECT id, ten FROM thanh_vien ORDER BY id ASC');
+    const result = await pool.query(
+      'SELECT id, ten, ma_ngan_hang as "maNganHang", so_tai_khoan as "soTaiKhoan", ten_tai_khoan as "tenTaiKhoan" FROM thanh_vien ORDER BY id ASC'
+    );
     return res.json(result.rows);
   } catch (error: any) {
     console.error(error);
@@ -221,15 +223,15 @@ app.get('/api/danh-sach-thanh-vien', async (req, res) => {
 app.put('/api/sua-thanh-vien/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { ten } = req.body;
+    const { ten, maNganHang, soTaiKhoan, tenTaiKhoan } = req.body;
 
     if (!ten || typeof ten !== 'string' || ten.trim() === '') {
       return res.status(400).json({ error: 'Tên thành viên không hợp lệ.' });
     }
 
     const result = await pool.query(
-      'UPDATE thanh_vien SET ten = $1 WHERE id = $2 RETURNING id, ten',
-      [ten.trim(), Number(id)]
+      'UPDATE thanh_vien SET ten = $1, ma_ngan_hang = $2, so_tai_khoan = $3, ten_tai_khoan = $4 WHERE id = $5 RETURNING id, ten, ma_ngan_hang as "maNganHang", so_tai_khoan as "soTaiKhoan", ten_tai_khoan as "tenTaiKhoan"',
+      [ten.trim(), maNganHang || null, soTaiKhoan || null, tenTaiKhoan || null, Number(id)]
     );
     return res.json(result.rows[0]);
   } catch (error: any) {
