@@ -470,23 +470,6 @@ function App() {
                                   {formatVND(gd.soTien)}
                                 </span>
                                  <div className="flex items-center gap-1.5">
-                                  {hasQrCode && (
-                                    <button
-                                      onClick={() => {
-                                        setActiveQRData({
-                                          qrCodeImage: creditorMember.qrCodeImage!,
-                                          denTen: activeCreditor.ten,
-                                          soTien: gd.soTien,
-                                          tuTen: gd.tuTen,
-                                        });
-                                      }}
-                                      className="p-2 rounded-lg border bg-slate-950 border-slate-850 text-slate-400 hover:text-emerald-400 hover:border-emerald-500/30 transition-all duration-200 flex items-center justify-center cursor-pointer"
-                                      title="Hiển thị mã QR thanh toán"
-                                    >
-                                      <QrCode className="w-3.5 h-3.5" />
-                                    </button>
-                                  )}
-
                                   <button
                                     onClick={() => handleCopyText(gd.tuTen, activeCreditor.ten, gd.soTien, copyKey)}
                                     className={`p-2 rounded-lg border transition-all duration-200 flex items-center justify-center cursor-pointer ${
@@ -553,7 +536,25 @@ function App() {
               </div>
 
               {/* Modal Footer */}
-              <div className="flex justify-end px-6 py-4 border-t border-slate-800 bg-slate-900/50">
+              <div className="flex justify-between items-center px-6 py-4 border-t border-slate-800 bg-slate-900/50">
+                <div>
+                  {hasQrCode && (
+                    <button
+                      onClick={() => {
+                        setActiveQRData({
+                          qrCodeImage: creditorMember.qrCodeImage!,
+                          denTen: activeCreditor.ten,
+                          soTien: activeCreditor.netBalance,
+                          tuTen: 'Thành viên nhóm',
+                        });
+                      }}
+                      className="px-4 py-2.5 bg-emerald-600/10 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-600/20 text-sm font-semibold rounded-xl transition-all cursor-pointer flex items-center gap-2"
+                    >
+                      <QrCode className="w-4 h-4" />
+                      Mã QR nhận tiền của {activeCreditor.ten}
+                    </button>
+                  )}
+                </div>
                 <button
                   onClick={() => setIsSummaryModalOpen(false)}
                   className="px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-sm font-semibold text-slate-250 rounded-xl transition-all cursor-pointer"
