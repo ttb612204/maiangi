@@ -100,4 +100,9 @@ export const getTongKetTuan = async (ngayDauTuan?: string): Promise<TongKetRespo
   return response.data;
 };
 
+export const deleteBuaToi = async (id: number): Promise<{ message: string }> => {
+  const response = await api.delete(`/xoa-bua-toi/${id}`);
+  return response.data;
+};
+
 export default api;

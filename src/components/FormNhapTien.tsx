@@ -13,6 +13,7 @@ interface FormNhapTienProps {
   buaToi?: BuaToi;
   thanhViens: ThanhVien[];
   onSave: (buaToi: BuaToi) => Promise<void>;
+  onDelete?: (id: number) => Promise<void>;
   onClose: () => void;
 }
 
@@ -21,6 +22,7 @@ export const FormNhapTien: React.FC<FormNhapTienProps> = ({
   buaToi,
   thanhViens,
   onSave,
+  onDelete,
   onClose,
 }) => {
   const [nguoiAnIds, setNguoiAnIds] = useState<number[]>([]);
@@ -286,6 +288,16 @@ export const FormNhapTien: React.FC<FormNhapTienProps> = ({
 
           {/* Footer nút */}
           <div className="flex gap-3 justify-end pt-4 border-t border-slate-800">
+            {buaToi && buaToi.id && onDelete && (
+              <button
+                type="button"
+                onClick={() => onDelete(buaToi.id!)}
+                className="mr-auto px-5 py-2.5 bg-rose-950/20 border border-rose-900/30 hover:bg-rose-900/20 text-sm font-semibold text-rose-350 rounded-xl transition-all cursor-pointer flex items-center gap-1.5"
+              >
+                <Trash2 className="w-4 h-4" />
+                Xóa bữa tối
+              </button>
+            )}
             <button
               type="button"
               onClick={onClose}

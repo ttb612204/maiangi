@@ -1,5 +1,5 @@
 import React from 'react';
-import { Calendar, PlusCircle, Edit, Users, CreditCard } from 'lucide-react';
+import { Calendar, PlusCircle, Edit, Users, CreditCard, Trash2 } from 'lucide-react';
 import { BuaToi, ThanhVien } from '../services/api';
 
 interface DayConfig {
@@ -13,6 +13,7 @@ interface LichAnTuanProps {
   thanhViens: ThanhVien[];
   daysOfWeek: DayConfig[];
   onSelectDay: (day: DayConfig, buaToi?: BuaToi) => void;
+  onDeleteDay: (id: number) => void;
 }
 
 export const LichAnTuan: React.FC<LichAnTuanProps> = React.memo(({
@@ -20,6 +21,7 @@ export const LichAnTuan: React.FC<LichAnTuanProps> = React.memo(({
   thanhViens,
   daysOfWeek,
   onSelectDay,
+  onDeleteDay,
 }) => {
   // Tìm thông tin bữa tối theo thứ trong tuần
   const getBuaToiForDay = (thu: string) => {
@@ -113,11 +115,23 @@ export const LichAnTuan: React.FC<LichAnTuanProps> = React.memo(({
               )}
 
               {/* Nút tác vụ hiện khi hover */}
-              <div className="absolute right-3 top-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+              <div className="absolute right-3 top-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex gap-1">
                 {hasBuaToi ? (
-                  <div className="p-1 rounded-lg bg-slate-800 text-slate-400 hover:text-indigo-400">
-                    <Edit className="w-3.5 h-3.5" />
-                  </div>
+                  <>
+                    <div className="p-1 rounded-lg bg-slate-800 text-slate-400 hover:text-indigo-400">
+                      <Edit className="w-3.5 h-3.5" />
+                    </div>
+                    <div
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onDeleteDay(buaToi.id!);
+                      }}
+                      className="p-1 rounded-lg bg-slate-800 text-slate-400 hover:text-rose-400"
+                      title="Xóa bữa tối"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </div>
+                  </>
                 ) : (
                   <div className="p-1 rounded-lg bg-slate-800 text-slate-400 hover:text-indigo-400">
                     <PlusCircle className="w-3.5 h-3.5" />

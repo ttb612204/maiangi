@@ -481,7 +481,19 @@ app.get('/api/tong-ket-tuan', async (req, res) => {
     console.error(error);
     return res.status(500).json({ error: error.message || 'Lỗi hệ thống.' });
   }
+// 8. Xóa bữa tối
+app.delete('/api/xoa-bua-toi/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    // Database schema có ON DELETE CASCADE nên tự động xóa ở bảng liên quan
+    await pool.query('DELETE FROM bua_toi WHERE id = $1', [Number(id)]);
+    return res.json({ message: 'Đã xóa bữa tối thành công.' });
+  } catch (error: any) {
+    console.error(error);
+    return res.status(500).json({ error: error.message || 'Lỗi hệ thống.' });
+  }
 });
+
 
 // Khởi chạy server nội bộ (khi dev offline)
 if (process.env.NODE_ENV !== 'production') {

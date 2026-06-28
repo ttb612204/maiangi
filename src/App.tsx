@@ -7,6 +7,7 @@ import {
   deleteThanhVien,
   getBuaTois,
   addBuaToi,
+  deleteBuaToi,
   getTongKetTuan,
   ThanhVien,
   BuaToi,
@@ -208,6 +209,19 @@ function App() {
     }
   }, [fetchWeeklyData, selectedWeekStart]);
 
+  const handleDeleteBuaToi = useCallback(async (id: number) => {
+    if (!confirm('Bạn có chắc chắn muốn xóa bữa tối này?')) return;
+    try {
+      await deleteBuaToi(id);
+      setBuaTois((prev) => prev.filter((x) => x.id !== id));
+      await fetchWeeklyData(selectedWeekStart);
+      handleCloseModal();
+    } catch (err) {
+      console.error(err);
+      alert('Có lỗi xảy ra khi xóa bữa tối.');
+    }
+  }, [fetchWeeklyData, selectedWeekStart, handleCloseModal]);
+
   const formatVND = useCallback((amount: number) => {
     return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount);
   }, []);
@@ -375,6 +389,7 @@ function App() {
             thanhViens={thanhViens}
             daysOfWeek={daysOfWeek}
             onSelectDay={handleSelectDay}
+            onDeleteDay={handleDeleteBuaToi}
           />
         </section>
 
@@ -396,6 +411,7 @@ function App() {
           buaToi={selectedBuaToi}
           thanhViens={thanhViens}
           onSave={handleSaveBuaToi}
+          onDelete={handleDeleteBuaToi}
           onClose={handleCloseModal}
         />
       )}
@@ -403,11 +419,12 @@ function App() {
       {/* Modal Bảng Chi Tiết Tổng Kết Nhận Tiền */}
       {isSummaryModalOpen && selectedCreditorId && (() => {
         const activeCreditor = tongKet?.chiTietTongKet.find(c => c.thanhVienId === selectedCreditorId);
-        const activeDanhSachNhan = tongKet?.danhSachChuyenKhoan.filter(
-          (gd) => gd.denThanhVienId === selectedCreditorId
-        ) || [];
-
         if (!activeCreditor) return null;
+
+        const isDebtor = activeCreditor.netBalance < -0.01;
+        const activeTransfers = tongKet?.danhSachChuyenKhoan.filter(
+          (gd) => isDebtor ? gd.tuThanhVienId === selectedCreditorId : gd.denThanhVienId === selectedCreditorId
+         ) || [];
 
         const creditorMember = thanhViens.find(tv => tv.id === activeCreditor.thanhVienId);
         const hasQrCode = !!creditorMember?.qrCodeImage;
@@ -420,11 +437,19 @@ function App() {
               <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-900/50">
                 <div>
                   <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                    <Landmark className="w-5 h-5 text-emerald-400" />
+                    <Landmark className={`w-5 h-5 ${isDebtor ? 'text-rose-400' : 'text-emerald-400'}`} />
                     BẢNG CHI TIẾT PHÂN CHIA - {activeCreditor.ten}
                   </h3>
                   <p className="text-xs text-slate-400 mt-0.5">
-                    Tổng tiền được nhận lại: <span className="text-emerald-400 font-extrabold font-mono">{formatVND(activeCreditor.netBalance)}</span>
+                    {isDebtor ? (
+                      <>
+                        Tổng tiền cần chuyển trả: <span className="text-rose-400 font-extrabold font-mono">{formatVND(Math.abs(activeCreditor.netBalance))}</span>
+                      </>
+                    ) : (
+                      <>
+                        Tổng tiền được nhận lại: <span className="text-emerald-400 font-extrabold font-mono">{formatVND(activeCreditor.netBalance)}</span>
+                      </>
+                    )}
                   </p>
                 </div>
                 <button
@@ -442,36 +467,55 @@ function App() {
                   {/* Cột trái: Ai cần chuyển khoản */}
                   <div className="space-y-3">
                     <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                      <Coins className="w-4 h-4 text-emerald-400" />
-                      1. Các thành viên cần chuyển trả cho {activeCreditor.ten}
+                      <Coins className={`w-4 h-4 ${isDebtor ? 'text-rose-400' : 'text-emerald-400'}`} />
+                      {isDebtor ? `1. ${activeCreditor.ten} cần chuyển trả cho các thành viên` : `1. Các thành viên cần chuyển trả cho ${activeCreditor.ten}`}
                     </h4>
                     
-                    {activeDanhSachNhan.length === 0 ? (
+                    {activeTransfers.length === 0 ? (
                       <div className="bg-slate-900/40 border border-slate-850 rounded-xl p-4 text-center text-xs text-slate-500">
-                        Không có ai cần chuyển trả thêm tiền.
+                        {isDebtor ? 'Không cần chuyển trả thêm tiền.' : 'Không có ai cần chuyển trả thêm tiền.'}
                       </div>
                     ) : (
                       <div className="space-y-2.5">
-                        {activeDanhSachNhan.map((gd, idx) => {
-                          const copyKey = `modal-${activeCreditor.thanhVienId}-receive-from-${gd.tuThanhVienId}-${idx}`;
+                        {activeTransfers.map((gd, idx) => {
+                          const copyKey = `modal-${activeCreditor.thanhVienId}-${isDebtor ? 'pay' : 'receive'}-from-${isDebtor ? gd.denThanhVienId : gd.tuThanhVienId}-${idx}`;
+                          const recipientMember = thanhViens.find(tv => tv.id === gd.denThanhVienId);
+                          const recipientHasQr = !!recipientMember?.qrCodeImage;
+
                           return (
                             <div
                               key={idx}
                               className="flex items-center justify-between p-3.5 rounded-xl bg-slate-900/40 border border-slate-800/80 hover:border-slate-700/60 transition-colors"
                             >
                               <div className="flex items-center gap-2 text-sm text-slate-200">
-                                <span className="font-bold text-rose-300">{gd.tuTen}</span>
+                                <span className={`font-bold ${isDebtor ? 'text-slate-100' : 'text-rose-300'}`}>{gd.tuTen}</span>
                                 <span className="text-slate-500 font-normal">chuyển cho</span>
-                                <span className="font-bold text-slate-100">{activeCreditor.ten}</span>
+                                <span className={`font-bold ${isDebtor ? 'text-emerald-300' : 'text-slate-100'}`}>{gd.denTen}</span>
                               </div>
                               
                               <div className="flex items-center gap-3">
                                 <span className="font-mono font-extrabold text-indigo-300 text-sm">
                                   {formatVND(gd.soTien)}
                                 </span>
-                                 <div className="flex items-center gap-1.5">
+                                <div className="flex items-center gap-1.5">
+                                  {recipientHasQr && (
+                                    <button
+                                      onClick={() => {
+                                        setActiveQRData({
+                                          qrCodeImage: recipientMember.qrCodeImage!,
+                                          denTen: gd.denTen,
+                                          soTien: gd.soTien,
+                                          tuTen: gd.tuTen,
+                                        });
+                                      }}
+                                      className="p-2 rounded-lg border bg-slate-950 border-slate-850 text-slate-400 hover:text-emerald-400 hover:border-emerald-500/30 transition-all duration-200 flex items-center justify-center cursor-pointer"
+                                      title={`Mã QR nhận tiền của ${gd.denTen}`}
+                                    >
+                                      <QrCode className="w-3.5 h-3.5" />
+                                    </button>
+                                  )}
                                   <button
-                                    onClick={() => handleCopyText(gd.tuTen, activeCreditor.ten, gd.soTien, copyKey)}
+                                    onClick={() => handleCopyText(gd.tuTen, gd.denTen, gd.soTien, copyKey)}
                                     className={`p-2 rounded-lg border transition-all duration-200 flex items-center justify-center cursor-pointer ${
                                       copiedKey === copyKey
                                         ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400'
@@ -538,7 +582,7 @@ function App() {
               {/* Modal Footer */}
               <div className="flex justify-between items-center px-6 py-4 border-t border-slate-800 bg-slate-900/50">
                 <div>
-                  {hasQrCode && (
+                  {hasQrCode && activeCreditor.netBalance > 0.01 && (
                     <button
                       onClick={() => {
                         setActiveQRData({
