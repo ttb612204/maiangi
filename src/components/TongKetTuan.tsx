@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { RefreshCw, TrendingUp, HelpCircle, Landmark, Info } from 'lucide-react';
-import { TongKetResponse } from '../services/api';
+import { TongKetResponse, BuaToi } from '../services/api';
 
 interface TongKetTuanProps {
   tongKet: TongKetResponse | null;
+  buaTois: BuaToi[];
   onRefresh: () => Promise<void>;
   loading: boolean;
   onOpenDetail: (id: number) => void;
@@ -11,6 +12,7 @@ interface TongKetTuanProps {
 
 export const TongKetTuan: React.FC<TongKetTuanProps> = React.memo(({
   tongKet,
+  buaTois,
   onRefresh,
   loading,
   onOpenDetail,
@@ -19,10 +21,24 @@ export const TongKetTuan: React.FC<TongKetTuanProps> = React.memo(({
     return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount);
   };
 
+  const nguoiDaTraTienIds = useMemo(() => {
+    return new Set(
+      buaTois.flatMap(bt => 
+        (bt.nguoiTraTien || [])
+          .filter(ntt => ntt.soTienDaTra > 0)
+          .map(ntt => ntt.thanhVienId)
+      )
+    );
+  }, [buaTois]);
+
   // Sắp xếp danh sách thành viên theo số dư (dương lên trước, âm xuống sau)
-  const danhSachThanhVienSort = tongKet
-    ? [...tongKet.chiTietTongKet].sort((a, b) => b.netBalance - a.netBalance)
-    : [];
+  // và chỉ giữ lại những người thực tế đã trả tiền ăn tuần này
+  const danhSachThanhVienSort = useMemo(() => {
+    if (!tongKet) return [];
+    return [...tongKet.chiTietTongKet]
+      .filter((ct) => nguoiDaTraTienIds.has(ct.thanhVienId))
+      .sort((a, b) => b.netBalance - a.netBalance);
+  }, [tongKet, nguoiDaTraTienIds]);
 
   return (
     <div className="glass-panel rounded-2xl p-6 shadow-xl border border-slate-800 flex flex-col h-full">

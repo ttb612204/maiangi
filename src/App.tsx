@@ -397,6 +397,7 @@ function App() {
         <section className="lg:col-span-1">
           <TongKetTuan
             tongKet={tongKet}
+            buaTois={buaTois}
             onRefresh={handleRefreshSummary}
             loading={loadingSummary}
             onOpenDetail={handleOpenDetail}
