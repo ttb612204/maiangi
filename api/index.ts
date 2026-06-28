@@ -481,6 +481,8 @@ app.get('/api/tong-ket-tuan', async (req, res) => {
     console.error(error);
     return res.status(500).json({ error: error.message || 'Lỗi hệ thống.' });
   }
+});
+
 // 8. Xóa bữa tối
 app.delete('/api/xoa-bua-toi/:id', async (req, res) => {
   try {
