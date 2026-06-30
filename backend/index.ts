@@ -30,7 +30,12 @@ const pool = new Pool({
 });
 
 // Tự động kiểm tra và khởi tạo các bảng mới (chi_phi_khac, nguoi_chia_chi_phi, nguoi_tra_chi_phi)
-async function initializeDatabase() {
+let isDbInitialized = false;
+
+app.use(async (req, res, next) => {
+  if (isDbInitialized) {
+    return next();
+  }
   try {
     // 1. Tạo các bảng mới nếu chưa tồn tại
     await pool.query(`
@@ -62,12 +67,15 @@ async function initializeDatabase() {
       DROP COLUMN IF EXISTS loai,
       DROP COLUMN IF EXISTS mo_ta;
     `);
+    console.log('Database migration: Checked and initialized chi_phi_khac tables.');
+    isDbInitialized = true;
+    next();
   } catch (err) {
     console.error('Database migration error:', err);
+    // Vẫn tiếp tục chạy để không block request
+    next();
   }
-}
-
-initializeDatabase();
+});
 
 // Middleware kiểm tra cấu hình biến môi trường
 app.use((req, res, next) => {
