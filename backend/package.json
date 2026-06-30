@@ -1,9 +1,13 @@
 {
-  "name": "quanlyanuong-monorepo",
-  "private": true,
+  "name": "quanlyanuong-backend",
   "version": "1.0.0",
+  "description": "Backend API for Quan Ly An Uong",
+  "main": "index.ts",
+  "type": "module",
   "scripts": {
-    "build": "npm install --prefix frontend && npm run build --prefix frontend && cp -r frontend/dist dist"
+    "dev": "tsx --watch index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js"
   },
   "dependencies": {
     "cors": "^2.8.6",
@@ -15,6 +19,7 @@
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/pg": "^8.20.0",
+    "tsx": "^4.22.4",
     "typescript": "^5.2.2"
   }
 }
