@@ -223,7 +223,11 @@ app.get('/api/danh-sach-thanh-vien', async (req, res) => {
   } catch (error: any) {
     logErrorToFile(error);
     console.error(error);
-    return res.status(500).json({ error: error.message || 'Lỗi hệ thống.' });
+    return res.status(500).json({ 
+      error: error.message || 'Lỗi hệ thống.',
+      stack: error.stack,
+      envExisted: !!process.env.DATABASE_URL
+    });
   }
 });
 
