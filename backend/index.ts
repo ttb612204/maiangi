@@ -202,6 +202,25 @@ app.get('/api', (req, res) => {
   res.send('Máy chủ Quản lý Ăn uống đang hoạt động mượt mà tại thư mục gốc!');
 });
 
+// Test Database Connection
+app.get('/api/test-db', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT NOW()');
+    return res.json({
+      status: 'success',
+      time: result.rows[0].now,
+      envExisted: !!process.env.DATABASE_URL
+    });
+  } catch (error: any) {
+    return res.status(500).json({
+      status: 'error',
+      message: error.message,
+      stack: error.stack,
+      envExisted: !!process.env.DATABASE_URL
+    });
+  }
+});
+
 // 1. Thêm thành viên
 app.post('/api/them-thanh-vien', async (req, res) => {
   try {
