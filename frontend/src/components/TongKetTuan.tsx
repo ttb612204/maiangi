@@ -21,24 +21,24 @@ export const TongKetTuan: React.FC<TongKetTuanProps> = React.memo(({
     return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount);
   };
 
-  const nguoiDaTraTienIds = useMemo(() => {
-    return new Set(
-      buaTois.flatMap(bt => 
-        (bt.nguoiTraTien || [])
-          .filter(ntt => ntt.soTienDaTra > 0)
-          .map(ntt => ntt.thanhVienId)
-      )
-    );
+  const nguoiThamGiaIds = useMemo(() => {
+    const activeIds = new Set<number>();
+    buaTois.forEach((bt) => {
+      bt.nguoiAnIds?.forEach((id) => activeIds.add(id));
+      bt.nguoiTraTien?.forEach((p) => {
+        if (p.soTienDaTra > 0) activeIds.add(p.thanhVienId);
+      });
+    });
+    return activeIds;
   }, [buaTois]);
 
-  // Sắp xếp danh sách thành viên theo số dư (dương lên trước, âm xuống sau)
-  // và chỉ giữ lại những người thực tế đã trả tiền ăn tuần này
+  // Chỉ hiển thị những người tham gia ăn uống tuần này
   const danhSachThanhVienSort = useMemo(() => {
     if (!tongKet) return [];
     return [...tongKet.chiTietTongKet]
-      .filter((ct) => nguoiDaTraTienIds.has(ct.thanhVienId))
+      .filter((ct) => nguoiThamGiaIds.has(ct.thanhVienId))
       .sort((a, b) => b.netBalance - a.netBalance);
-  }, [tongKet, nguoiDaTraTienIds]);
+  }, [tongKet, nguoiThamGiaIds]);
 
   return (
     <div className="glass-panel rounded-2xl p-6 shadow-xl border border-slate-800 flex flex-col h-full">
@@ -131,8 +131,6 @@ export const TongKetTuan: React.FC<TongKetTuanProps> = React.memo(({
               </div>
             )}
           </div>
-
-
         </div>
       )}
     </div>

@@ -42,9 +42,9 @@ export const DanhSachThanhVien: React.FC<DanhSachThanhVienProps> = React.memo(({
         let width = img.width;
         let height = img.height;
 
-        // Giới hạn ảnh QR tối đa 500px chiều dài/rộng để giảm kích thước lưu trữ
-        const MAX_WIDTH = 500;
-        const MAX_HEIGHT = 500;
+        // Giới hạn ảnh QR tối đa 1200px chiều dài/rộng để giữ độ nét cao khi hiển thị
+        const MAX_WIDTH = 1200;
+        const MAX_HEIGHT = 1200;
 
         if (width > height) {
           if (width > MAX_WIDTH) {
@@ -64,8 +64,8 @@ export const DanhSachThanhVien: React.FC<DanhSachThanhVienProps> = React.memo(({
         const ctx = canvas.getContext('2d');
         if (ctx) {
           ctx.drawImage(img, 0, 0, width, height);
-          // Nén chất lượng JPEG xuống 70% (khoảng 20KB-40KB, quét cực nhạy và lưu siêu nhẹ)
-          const compressedBase64 = canvas.toDataURL('image/jpeg', 0.7);
+          // Nén chất lượng JPEG xuống 90% để giữ ảnh sắc nét sắc sảo
+          const compressedBase64 = canvas.toDataURL('image/jpeg', 0.9);
           callback(compressedBase64);
         }
       };

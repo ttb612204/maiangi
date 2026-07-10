@@ -43,6 +43,7 @@ export interface GiaoDich {
   denThanhVienId: number;
   denTen: string;
   soTien: number;
+  daTra?: boolean;
 }
 
 export interface TongKetResponse {
@@ -116,6 +117,16 @@ export const getTongKetTuan = async (ngayDauTuan?: string): Promise<TongKetRespo
 
 export const deleteBuaToi = async (id: number): Promise<{ message: string }> => {
   const response = await api.delete(`/xoa-bua-toi/${id}`);
+  return response.data;
+};
+
+export const toggleChuyenKhoan = async (payload: {
+  ngayDauTuan: string;
+  tuThanhVienId: number;
+  denThanhVienId: number;
+  daTra: boolean;
+}): Promise<{ message: string }> => {
+  const response = await api.post('/toggle-chuyen-khoan', payload);
   return response.data;
 };
 

@@ -59,6 +59,15 @@ app.use(async (req, res, next) => {
         thanh_vien_id INT REFERENCES thanh_vien(id) ON DELETE CASCADE,
         so_tien_da_tra NUMERIC(12, 2) NOT NULL
       );
+
+      CREATE TABLE IF NOT EXISTS trang_thai_chuyen_khoan (
+        id SERIAL PRIMARY KEY,
+        ngay_dau_tuan DATE NOT NULL,
+        tu_thanh_vien_id INT REFERENCES thanh_vien(id) ON DELETE CASCADE,
+        den_thanh_vien_id INT REFERENCES thanh_vien(id) ON DELETE CASCADE,
+        da_tra BOOLEAN DEFAULT FALSE,
+        UNIQUE(ngay_dau_tuan, tu_thanh_vien_id, den_thanh_vien_id)
+      );
     `);
 
     // 2. Dọn dẹp bảng bua_toi: Xóa các cột loai và mo_ta thừa vì đã dùng bảng chi_phi_khac riêng biệt
@@ -67,7 +76,7 @@ app.use(async (req, res, next) => {
       DROP COLUMN IF EXISTS loai,
       DROP COLUMN IF EXISTS mo_ta;
     `);
-    console.log('Database migration: Checked and initialized chi_phi_khac tables.');
+    console.log('Database migration: Checked and initialized tables.');
     isDbInitialized = true;
     next();
   } catch (err) {
@@ -191,6 +200,72 @@ function tinhChuyenKhoanTuUu(
   }
 
   return giaoDichs;
+}
+
+function tinhChuyenKhoanSongPhuong(
+  tatCaThanhVien: { id: number; ten: string }[],
+  tatCaBuaToi: any[]
+): any[] {
+  const netOwed = new Map<string, number>();
+  const getOwedKey = (fromId: number, toId: number) => `${fromId}-${toId}`;
+  
+  for (const bt of tatCaBuaToi) {
+    const countNguoiAn = bt.nguoiAnIds?.length || 0;
+    if (countNguoiAn === 0) continue;
+    const tienMoiNguoi = bt.tongTien / countNguoiAn;
+    
+    // Tính tổng số tiền đã trả thực tế của buổi này
+    const totalPaid = bt.nguoiTraTien?.reduce((sum: number, p: any) => sum + p.soTienDaTra, 0) || 0;
+    if (totalPaid === 0) continue;
+    
+    // Với mỗi người ăn B
+    for (const B of bt.nguoiAnIds) {
+      // Mỗi người trả tiền A tài trợ cho B một phần
+      for (const p of bt.nguoiTraTien) {
+        if (p.soTienDaTra <= 0) continue;
+        const A = p.thanhVienId;
+        if (A === B) continue; // Không nợ chính mình
+        
+        // A tài trợ: (p.soTienDaTra / totalPaid) * tienMoiNguoi
+        const fundedAmount = (p.soTienDaTra / totalPaid) * tienMoiNguoi;
+        const key = getOwedKey(B, A); // B nợ A
+        netOwed.set(key, (netOwed.get(key) || 0) + fundedAmount);
+      }
+    }
+  }
+  
+  // Tổng hợp và cấn trừ song phương
+  const giaoDichs: any[] = [];
+  for (let i = 0; i < tatCaThanhVien.length; i++) {
+    for (let j = i + 1; j < tatCaThanhVien.length; j++) {
+      const u = tatCaThanhVien[i];
+      const v = tatCaThanhVien[j];
+      
+      const uOwesV = netOwed.get(getOwedKey(u.id, v.id)) || 0;
+      const vOwesU = netOwed.get(getOwedKey(v.id, u.id)) || 0;
+      
+      const diff = uOwesV - vOwesU;
+      if (diff > 0.01) {
+        giaoDichs.push({
+          tuThanhVienId: u.id,
+          tuTen: u.ten,
+          denThanhVienId: v.id,
+          denTen: v.ten,
+          soTien: Math.round(diff * 100) / 100
+        });
+      } else if (diff < -0.01) {
+        giaoDichs.push({
+          tuThanhVienId: v.id,
+          tuTen: v.ten,
+          denThanhVienId: u.id,
+          denTen: u.ten,
+          soTien: Math.round(Math.abs(diff) * 100) / 100
+        });
+      }
+    }
+  }
+  
+  return giaoDichs.sort((a, b) => b.soTien - a.soTien);
 }
 
 // ============================================================================
@@ -667,12 +742,28 @@ app.get('/api/tong-ket-tuan', async (req, res) => {
       };
     });
 
-    // Tính toán đối trừ chuyển khoản tối ưu (Simplify Debts)
-    const danhSachChuyenKhoan = tinhChuyenKhoanTuUu(tatCaThanhVien, chiTietTongKet);
+    // Tính toán đối trừ chuyển khoản trực tiếp song phương
+    const danhSachChuyenKhoan = tinhChuyenKhoanSongPhuong(tatCaThanhVien, tatCaBuaToi);
+
+    // Lấy trạng thái đã trả tiền từ DB cho tuần này
+    const statusRes = await pool.query(
+      'SELECT tu_thanh_vien_id, den_thanh_vien_id, da_tra FROM trang_thai_chuyen_khoan WHERE ngay_dau_tuan = $1',
+      [new Date(ngayDauTuan)]
+    );
+    const statusMap = new Map<string, boolean>();
+    statusRes.rows.forEach((r) => {
+      statusMap.set(`${r.tu_thanh_vien_id}-${r.den_thanh_vien_id}`, r.da_tra);
+    });
+
+    // Gắn thêm trường daTra vào danh sách chuyển khoản
+    const danhSachChuyenKhoanWithStatus = danhSachChuyenKhoan.map((ck) => ({
+      ...ck,
+      daTra: statusMap.get(`${ck.tuThanhVienId}-${ck.denThanhVienId}`) || false
+    }));
 
     return res.json({
       chiTietTongKet,
-      danhSachChuyenKhoan,
+      danhSachChuyenKhoan: danhSachChuyenKhoanWithStatus,
     });
   } catch (error: any) {
     logErrorToFile(error);
@@ -694,6 +785,30 @@ app.delete('/api/xoa-bua-toi/:id', async (req, res) => {
   }
 });
 
+// 9. Cập nhật trạng thái chuyển khoản (đã trả / chưa trả)
+app.post('/api/toggle-chuyen-khoan', async (req, res) => {
+  try {
+    const { ngayDauTuan, tuThanhVienId, denThanhVienId, daTra } = req.body;
+    if (!ngayDauTuan || !tuThanhVienId || !denThanhVienId) {
+      return res.status(400).json({ error: 'Thiếu thông tin cập nhật.' });
+    }
+
+    const dateObj = new Date(ngayDauTuan);
+    
+    // Upsert trạng thái đã trả tiền
+    await pool.query(`
+      INSERT INTO trang_thai_chuyen_khoan (ngay_dau_tuan, tu_thanh_vien_id, den_thanh_vien_id, da_tra)
+      VALUES ($1, $2, $3, $4)
+      ON CONFLICT (ngay_dau_tuan, tu_thanh_vien_id, den_thanh_vien_id)
+      DO UPDATE SET da_tra = EXCLUDED.da_tra
+    `, [dateObj, Number(tuThanhVienId), Number(denThanhVienId), !!daTra]);
+
+    return res.json({ message: 'Cập nhật trạng thái chuyển khoản thành công.' });
+  } catch (error: any) {
+    console.error(error);
+    return res.status(500).json({ error: error.message || 'Lỗi hệ thống.' });
+  }
+});
 
 // Khởi chạy server nội bộ (khi dev offline)
 if (process.env.NODE_ENV !== 'production') {

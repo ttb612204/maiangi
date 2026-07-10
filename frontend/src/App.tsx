@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { ChefHat, AlertCircle, X, Landmark, CalendarDays, Coins, Copy, Check, QrCode } from 'lucide-react';
+import { ChefHat, AlertCircle, X, Landmark, CalendarDays, Coins, Check, QrCode } from 'lucide-react';
 import {
   getThanhViens,
   addThanhVien,
@@ -10,6 +10,7 @@ import {
   addChiPhiKhac,
   deleteBuaToi,
   getTongKetTuan,
+  toggleChuyenKhoan,
   ThanhVien,
   BuaToi,
   NguoiTraTien,
@@ -86,7 +87,6 @@ function App() {
   // Quản lý Modal Chi Phí Khác
   const [isChiPhiModalOpen, setIsChiPhiModalOpen] = useState(false);
   const [selectedChiPhi, setSelectedChiPhi] = useState<BuaToi | undefined>(undefined);
-  const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [activeQRData, setActiveQRData] = useState<{
     qrCodeImage: string;
     denTen: string;
@@ -301,20 +301,6 @@ function App() {
   const getTenThanhVien = useCallback((id: number) => {
     return thanhViens.find((tv) => tv.id === id)?.ten || `Thành viên #${id}`;
   }, [thanhViens]);
-
-  const handleCopyText = useCallback((tuTen: string, denTen: string, soTien: number, key: string) => {
-    const formatNumber = new Intl.NumberFormat('vi-VN').format(soTien);
-    const text = `${tuTen} chuyển khoản cho ${denTen} số tiền ${formatNumber}đ`;
-    
-    navigator.clipboard.writeText(text).then(() => {
-      setCopiedKey(key);
-      setTimeout(() => {
-        setCopiedKey(null);
-      }, 2000);
-    }).catch(err => {
-      console.error('Lỗi sao chép:', err);
-    });
-  }, []);
 
   const memberPaidBreakdown = useMemo(() => {
     if (!selectedCreditorId) return [];
@@ -549,62 +535,50 @@ function App() {
         const activeCreditorMember = thanhViens.find(tv => tv.id === activeCreditor.thanhVienId);
         const hasQrCode = !!activeCreditorMember?.qrCodeImage;
 
-        // Tính toán các khoản nợ/có đối ứng trực tiếp (bilateral) giữa thành viên này và các thành viên khác
-        const bilateralTransfers = (() => {
-          const receivables: any[] = [];
-          const payables: any[] = [];
-          
-          for (const other of thanhViens) {
-            if (other.id === selectedCreditorId) continue;
-            
-            let netOwedToActive = 0;
-            
-            for (const bt of buaTois) {
-              const countNguoiAn = bt.nguoiAnIds?.length || 0;
-              if (countNguoiAn === 0) continue;
-              const tienMoiNguoi = bt.tongTien / countNguoiAn;
-              
-              // 1. Nếu activeCreditor là người trả tiền
-              const activePayer = bt.nguoiTraTien?.find(p => p.thanhVienId === selectedCreditorId);
-              if (activePayer && activePayer.soTienDaTra > 0) {
-                if (bt.nguoiAnIds.includes(other.id)) {
-                  netOwedToActive += tienMoiNguoi;
-                }
-              }
-              
-              // 2. Nếu other là người trả tiền
-              const otherPayer = bt.nguoiTraTien?.find(p => p.thanhVienId === other.id);
-              if (otherPayer && otherPayer.soTienDaTra > 0) {
-                if (bt.nguoiAnIds.includes(selectedCreditorId)) {
-                  netOwedToActive -= tienMoiNguoi;
-                }
-              }
-            }
-            
-            if (netOwedToActive > 0.01) {
-              receivables.push({
-                tuThanhVienId: other.id,
-                tuTen: other.ten,
-                denThanhVienId: selectedCreditorId,
-                denTen: activeCreditor.ten,
-                soTien: Math.round(netOwedToActive * 100) / 100
-              });
-            } else if (netOwedToActive < -0.01) {
-              payables.push({
-                tuThanhVienId: selectedCreditorId,
-                tuTen: activeCreditor.ten,
-                denThanhVienId: other.id,
-                denTen: other.ten,
-                soTien: Math.round(Math.abs(netOwedToActive) * 100) / 100
+        // Lấy các khoản nợ/có đối ứng trực tiếp đã được backend tính toán kèm trạng thái thanh toán
+        const bilateralTransfers = {
+          receivables: tongKet?.danhSachChuyenKhoan.filter(ck => ck.denThanhVienId === selectedCreditorId) || [],
+          payables: tongKet?.danhSachChuyenKhoan.filter(ck => ck.tuThanhVienId === selectedCreditorId) || [],
+        };
+
+        const allPaid = bilateralTransfers.payables.every(p => p.daTra);
+        const allReceived = bilateralTransfers.receivables.every(r => r.daTra);
+
+        const handleToggleAllPayables = async () => {
+          const nextStatus = !allPaid;
+          try {
+            for (const p of bilateralTransfers.payables) {
+              await toggleChuyenKhoan({
+                ngayDauTuan: selectedWeekStart,
+                tuThanhVienId: p.tuThanhVienId,
+                denThanhVienId: p.denThanhVienId,
+                daTra: nextStatus
               });
             }
+            await handleRefreshSummary();
+          } catch (err: any) {
+            console.error(err);
+            alert('Lỗi: ' + (err.response?.data?.error || err.message));
           }
-          
-          return {
-            receivables: receivables.sort((a, b) => b.soTien - a.soTien),
-            payables: payables.sort((a, b) => b.soTien - a.soTien)
-          };
-        })();
+        };
+
+        const handleToggleAllReceivables = async () => {
+          const nextStatus = !allReceived;
+          try {
+            for (const r of bilateralTransfers.receivables) {
+              await toggleChuyenKhoan({
+                ngayDauTuan: selectedWeekStart,
+                tuThanhVienId: r.tuThanhVienId,
+                denThanhVienId: r.denThanhVienId,
+                daTra: nextStatus
+              });
+            }
+            await handleRefreshSummary();
+          } catch (err: any) {
+            console.error(err);
+            alert('Lỗi: ' + (err.response?.data?.error || err.message));
+          }
+        };
 
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200">
@@ -617,17 +591,48 @@ function App() {
                     <Landmark className={`w-5 h-5 ${isDebtor ? 'text-rose-400' : 'text-emerald-400'}`} />
                     BẢNG CHI TIẾT PHÂN CHIA - {activeCreditor.ten}
                   </h3>
-                  <p className="text-xs text-slate-400 mt-0.5">
+                  <div className="flex items-center gap-3 mt-0.5">
+                    <span className="text-xs text-slate-400">
+                      {isDebtor ? (
+                        <>
+                          Tổng tiền cần chuyển trả: <span className="text-rose-400 font-extrabold font-mono">{formatVND(Math.abs(activeCreditor.netBalance))}</span>
+                        </>
+                      ) : (
+                        <>
+                          Tổng tiền được nhận lại: <span className="text-emerald-400 font-extrabold font-mono">{formatVND(activeCreditor.netBalance)}</span>
+                        </>
+                      )}
+                    </span>
                     {isDebtor ? (
-                      <>
-                        Tổng tiền cần chuyển trả: <span className="text-rose-400 font-extrabold font-mono">{formatVND(Math.abs(activeCreditor.netBalance))}</span>
-                      </>
+                      bilateralTransfers.payables.length > 0 && (
+                        <button
+                          onClick={handleToggleAllPayables}
+                          className={`px-2 py-0.5 text-[10px] font-bold rounded-md border transition-all cursor-pointer flex items-center gap-1 ${
+                            allPaid
+                              ? 'bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-750'
+                              : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/25'
+                          }`}
+                        >
+                          <Check className="w-3 h-3 stroke-[3]" />
+                          {allPaid ? 'Đã trả tiền' : 'Đánh dấu đã trả'}
+                        </button>
+                      )
                     ) : (
-                      <>
-                        Tổng tiền được nhận lại: <span className="text-emerald-400 font-extrabold font-mono">{formatVND(activeCreditor.netBalance)}</span>
-                      </>
+                      bilateralTransfers.receivables.length > 0 && (
+                        <button
+                          onClick={handleToggleAllReceivables}
+                          className={`px-2 py-0.5 text-[10px] font-bold rounded-md border transition-all cursor-pointer flex items-center gap-1 ${
+                            allReceived
+                              ? 'bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-750'
+                              : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/25'
+                          }`}
+                        >
+                          <Check className="w-3 h-3 stroke-[3]" />
+                          {allReceived ? 'Đã nhận đủ' : 'Đánh dấu đã nhận'}
+                        </button>
+                      )
                     )}
-                  </p>
+                  </div>
                 </div>
                 <button
                   onClick={() => setIsSummaryModalOpen(false)}
@@ -660,29 +665,37 @@ function App() {
                       ) : (
                         <div className="space-y-2">
                           {bilateralTransfers.receivables.map((gd, idx) => {
-                            const copyKey = `modal-rec-${activeCreditor.thanhVienId}-${gd.tuThanhVienId}-${idx}`;
                             const recipientMember = activeCreditorMember;
                             const recipientHasQr = hasQrCode;
 
                             return (
                               <div
                                 key={idx}
-                                className="flex items-center justify-between p-3.5 rounded-xl bg-slate-900/40 border border-slate-800/80 hover:border-slate-700/60 transition-colors"
+                                className={`flex items-center justify-between p-3.5 rounded-xl border transition-colors ${
+                                  gd.daTra 
+                                    ? 'bg-slate-900/20 border-slate-950/60 opacity-60' 
+                                    : 'bg-slate-900/40 border-slate-800/80 hover:border-slate-700/60'
+                                }`}
                               >
                                 <div className="flex items-center gap-2 text-sm text-slate-200">
-                                  <span className="font-bold text-rose-300">{gd.tuTen}</span>
-                                  <span className="text-slate-500 font-normal">chuyển cho</span>
-                                  <span className="font-bold text-slate-100">{gd.denTen}</span>
+                                  <div className="flex items-center gap-1">
+                                    <span className={`font-bold ${gd.daTra ? 'text-slate-500 line-through' : 'text-rose-300'}`}>{gd.tuTen}</span>
+                                    <span className="text-slate-555 font-normal">chuyển cho</span>
+                                    <span className={`font-bold ${gd.daTra ? 'text-slate-500 line-through' : 'text-slate-100'}`}>{gd.denTen}</span>
+                                  </div>
                                 </div>
                                 
                                 <div className="flex items-center gap-3">
-                                  <span className="font-mono font-extrabold text-indigo-300 text-sm">
+                                  <span className={`font-mono font-extrabold text-sm ${
+                                    gd.daTra ? 'text-slate-500 line-through' : 'text-indigo-300'
+                                  }`}>
                                     {formatVND(gd.soTien)}
                                   </span>
                                   <div className="flex items-center gap-1.5">
                                     {recipientHasQr && (
                                       <button
                                         onClick={() => {
+                                          if (gd.daTra) return;
                                           setActiveQRData({
                                             qrCodeImage: recipientMember?.qrCodeImage || '',
                                             denTen: gd.denTen,
@@ -690,27 +703,17 @@ function App() {
                                             tuTen: gd.tuTen,
                                           });
                                         }}
-                                        className="p-2 rounded-lg border bg-slate-950 border-slate-850 text-slate-400 hover:text-emerald-400 hover:border-emerald-500/30 transition-all duration-200 flex items-center justify-center cursor-pointer"
-                                        title={`Mã QR nhận tiền của ${gd.denTen}`}
+                                        disabled={gd.daTra}
+                                        className={`px-3 py-1.5 rounded-lg border transition-all duration-200 flex items-center gap-1.5 text-xs font-semibold cursor-pointer ${
+                                          gd.daTra
+                                            ? 'bg-slate-900 border-slate-950 text-slate-650 cursor-not-allowed opacity-50'
+                                            : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20 hover:border-emerald-500/30'
+                                        }`}
                                       >
                                         <QrCode className="w-3.5 h-3.5" />
+                                        Mã QR nhận tiền của {gd.denTen}
                                       </button>
                                     )}
-                                    <button
-                                      onClick={() => handleCopyText(gd.tuTen, gd.denTen, gd.soTien, copyKey)}
-                                      className={`p-2 rounded-lg border transition-all duration-200 flex items-center justify-center cursor-pointer ${
-                                        copiedKey === copyKey
-                                          ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400'
-                                          : 'bg-slate-950 border-slate-850 text-slate-400 hover:text-indigo-400 hover:border-indigo-500/30'
-                                      }`}
-                                      title="Copy cú pháp chuyển khoản"
-                                    >
-                                      {copiedKey === copyKey ? (
-                                        <Check className="w-3.5 h-3.5" />
-                                      ) : (
-                                        <Copy className="w-3.5 h-3.5" />
-                                      )}
-                                    </button>
                                   </div>
                                 </div>
                               </div>
@@ -732,57 +735,55 @@ function App() {
                       ) : (
                         <div className="space-y-2">
                           {bilateralTransfers.payables.map((gd, idx) => {
-                            const copyKey = `modal-pay-${activeCreditor.thanhVienId}-${gd.denThanhVienId}-${idx}`;
                             const recipientMember = thanhViens.find(tv => tv.id === gd.denThanhVienId);
                             const recipientHasQr = !!recipientMember?.qrCodeImage;
 
                             return (
                               <div
                                 key={idx}
-                                className="flex items-center justify-between p-3.5 rounded-xl bg-slate-900/40 border border-slate-800/80 hover:border-slate-700/60 transition-colors"
+                                className={`flex items-center justify-between p-3.5 rounded-xl border transition-colors ${
+                                  gd.daTra 
+                                    ? 'bg-slate-900/20 border-slate-950/60 opacity-60' 
+                                    : 'bg-slate-900/40 border-slate-800/80 hover:border-slate-700/60'
+                                }`}
                               >
                                 <div className="flex items-center gap-2 text-sm text-slate-200">
-                                  <span className="font-bold text-slate-100">{gd.tuTen}</span>
-                                  <span className="text-slate-500 font-normal">chuyển cho</span>
-                                  <span className="font-bold text-emerald-300">{gd.denTen}</span>
+                                  <div className="flex items-center gap-1">
+                                    <span className={`font-bold ${gd.daTra ? 'text-slate-500 line-through' : 'text-slate-100'}`}>{gd.tuTen}</span>
+                                    <span className="text-slate-555 font-normal">chuyển cho</span>
+                                    <span className={`font-bold ${gd.daTra ? 'text-slate-500 line-through' : 'text-emerald-300'}`}>{gd.denTen}</span>
+                                  </div>
                                 </div>
                                 
                                 <div className="flex items-center gap-3">
-                                  <span className="font-mono font-extrabold text-indigo-300 text-sm">
+                                  <span className={`font-mono font-extrabold text-sm ${
+                                    gd.daTra ? 'text-slate-500 line-through' : 'text-indigo-300'
+                                  }`}>
                                     {formatVND(gd.soTien)}
                                   </span>
                                   <div className="flex items-center gap-1.5">
                                     {recipientHasQr && (
                                       <button
                                         onClick={() => {
+                                          if (gd.daTra) return;
                                           setActiveQRData({
-                                            qrCodeImage: recipientMember.qrCodeImage!,
+                                            qrCodeImage: recipientMember?.qrCodeImage || '',
                                             denTen: gd.denTen,
                                             soTien: gd.soTien,
                                             tuTen: gd.tuTen,
                                           });
                                         }}
-                                        className="p-2 rounded-lg border bg-slate-950 border-slate-850 text-slate-400 hover:text-emerald-400 hover:border-emerald-500/30 transition-all duration-200 flex items-center justify-center cursor-pointer"
-                                        title={`Mã QR nhận tiền của ${gd.denTen}`}
+                                        disabled={gd.daTra}
+                                        className={`px-3 py-1.5 rounded-lg border transition-all duration-200 flex items-center gap-1.5 text-xs font-semibold cursor-pointer ${
+                                          gd.daTra
+                                            ? 'bg-slate-900 border-slate-950 text-slate-650 cursor-not-allowed opacity-50'
+                                            : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20 hover:border-emerald-500/30'
+                                        }`}
                                       >
                                         <QrCode className="w-3.5 h-3.5" />
+                                        Mã QR nhận tiền của {gd.denTen}
                                       </button>
                                     )}
-                                    <button
-                                      onClick={() => handleCopyText(gd.tuTen, gd.denTen, gd.soTien, copyKey)}
-                                      className={`p-2 rounded-lg border transition-all duration-200 flex items-center justify-center cursor-pointer ${
-                                        copiedKey === copyKey
-                                          ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400'
-                                          : 'bg-slate-950 border-slate-850 text-slate-400 hover:text-indigo-400 hover:border-indigo-500/30'
-                                      }`}
-                                      title="Copy cú pháp chuyển khoản"
-                                    >
-                                      {copiedKey === copyKey ? (
-                                        <Check className="w-3.5 h-3.5" />
-                                      ) : (
-                                        <Copy className="w-3.5 h-3.5" />
-                                      )}
-                                    </button>
                                   </div>
                                 </div>
                               </div>
@@ -906,59 +907,20 @@ function App() {
 
       {/* Sub-modal Mã QR Thanh Toán */}
       {activeQRData && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md animate-in fade-in duration-200">
-          <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200">
-            {/* Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-900/50">
-              <h3 className="text-md font-bold text-white flex items-center gap-2">
-                <QrCode className="w-5 h-5 text-emerald-400" />
-                Mã QR Thanh Toán
-              </h3>
-              <button
-                onClick={() => setActiveQRData(null)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* QR Image & Details */}
-            <div className="p-6 flex flex-col items-center space-y-4">
-              <div className="bg-slate-950 p-2 rounded-2xl border border-slate-800 shadow-inner flex justify-center items-center max-w-full overflow-hidden">
-                <img
-                  src={activeQRData.qrCodeImage}
-                  alt="Mã QR Chuyển Khoản"
-                  className="max-w-xs max-h-72 object-contain rounded-lg shadow-md"
-                />
-              </div>
-
-              <div className="w-full space-y-2 text-xs border-t border-slate-800 pt-4">
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Người nhận:</span>
-                  <span className="font-bold text-slate-200">{activeQRData.denTen}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Người gửi:</span>
-                  <span className="font-bold text-slate-200">{activeQRData.tuTen}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Số tiền chuyển:</span>
-                  <span className="font-mono font-extrabold text-emerald-400 text-sm">
-                    {formatVND(activeQRData.soTien)}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* Footer */}
-            <div className="flex justify-end px-6 py-4 border-t border-slate-800 bg-slate-900/50">
-              <button
-                onClick={() => setActiveQRData(null)}
-                className="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-250 rounded-xl transition-all cursor-pointer"
-              >
-                Đóng
-              </button>
-            </div>
+        <div 
+          onClick={() => setActiveQRData(null)} 
+          className="fixed inset-0 z-[60] overflow-y-auto bg-slate-950/95 backdrop-blur-md animate-in fade-in duration-200 cursor-pointer flex flex-col items-center justify-start md:justify-center py-8 px-4"
+        >
+          {/* Container chứa ảnh và text phóng to */}
+          <div className="flex flex-col items-center w-full max-w-[480px] my-auto">
+            <img
+              src={activeQRData.qrCodeImage}
+              alt="Mã QR Chuyển Khoản"
+              className="w-full h-auto object-contain rounded-2xl border border-slate-800/80 shadow-2xl animate-in zoom-in-95 duration-200"
+            />
+            <p className="text-[11px] text-slate-500 mt-4 select-none font-medium bg-slate-900/60 px-3 py-1.5 rounded-full border border-slate-800/40">
+              Nhấp vào vùng trống để đóng
+            </p>
           </div>
         </div>
       )}
