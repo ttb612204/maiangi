@@ -714,6 +714,30 @@ function App() {
                                         Mã QR nhận tiền của {gd.denTen}
                                       </button>
                                     )}
+                                    <button
+                                      onClick={async () => {
+                                        try {
+                                          await toggleChuyenKhoan({
+                                            ngayDauTuan: selectedWeekStart,
+                                            tuThanhVienId: gd.tuThanhVienId,
+                                            denThanhVienId: gd.denThanhVienId,
+                                            daTra: !gd.daTra,
+                                          });
+                                          await handleRefreshSummary();
+                                        } catch (err: any) {
+                                          console.error(err);
+                                          alert('Lỗi: ' + (err.response?.data?.error || err.message));
+                                        }
+                                      }}
+                                      className={`px-3 py-1.5 rounded-lg border transition-all duration-200 flex items-center gap-1 text-xs font-semibold cursor-pointer ${
+                                        gd.daTra
+                                          ? 'bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-750'
+                                          : 'bg-indigo-500/10 border-indigo-500/20 text-indigo-400 hover:bg-indigo-500/20 hover:border-indigo-500/30'
+                                      }`}
+                                    >
+                                      <Check className="w-3.5 h-3.5" />
+                                      Đã nhận
+                                    </button>
                                   </div>
                                 </div>
                               </div>
@@ -784,6 +808,30 @@ function App() {
                                         Mã QR nhận tiền của {gd.denTen}
                                       </button>
                                     )}
+                                    <button
+                                      onClick={async () => {
+                                        try {
+                                          await toggleChuyenKhoan({
+                                            ngayDauTuan: selectedWeekStart,
+                                            tuThanhVienId: gd.tuThanhVienId,
+                                            denThanhVienId: gd.denThanhVienId,
+                                            daTra: !gd.daTra,
+                                          });
+                                          await handleRefreshSummary();
+                                        } catch (err: any) {
+                                          console.error(err);
+                                          alert('Lỗi: ' + (err.response?.data?.error || err.message));
+                                        }
+                                      }}
+                                      className={`px-3 py-1.5 rounded-lg border transition-all duration-200 flex items-center gap-1 text-xs font-semibold cursor-pointer ${
+                                        gd.daTra
+                                          ? 'bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-750'
+                                          : 'bg-indigo-500/10 border-indigo-500/20 text-indigo-400 hover:bg-indigo-500/20 hover:border-indigo-500/30'
+                                      }`}
+                                    >
+                                      <Check className="w-3.5 h-3.5" />
+                                      Đã trả
+                                    </button>
                                   </div>
                                 </div>
                               </div>

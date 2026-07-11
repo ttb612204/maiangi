@@ -204,7 +204,8 @@ function tinhChuyenKhoanTuUu(
 
 function tinhChuyenKhoanSongPhuong(
   tatCaThanhVien: { id: number; ten: string }[],
-  tatCaBuaToi: any[]
+  tatCaBuaToi: any[],
+  statusMap?: Map<string, boolean>
 ): any[] {
   const netOwed = new Map<string, number>();
   const getOwedKey = (fromId: number, toId: number) => `${fromId}-${toId}`;
@@ -241,8 +242,36 @@ function tinhChuyenKhoanSongPhuong(
       const u = tatCaThanhVien[i];
       const v = tatCaThanhVien[j];
       
-      const uOwesV = netOwed.get(getOwedKey(u.id, v.id)) || 0;
-      const vOwesU = netOwed.get(getOwedKey(v.id, u.id)) || 0;
+      let uOwesV = netOwed.get(getOwedKey(u.id, v.id)) || 0;
+      let vOwesU = netOwed.get(getOwedKey(v.id, u.id)) || 0;
+      
+      // Nếu u -> v đã trả tiền trong DB, ta coi khoản nợ của u cho v đã được giải quyết (set về 0)
+      // và đẩy riêng giao dịch đã trả đó ra.
+      const uToVPaid = statusMap?.get(`${u.id}-${v.id}`) || false;
+      if (uToVPaid && uOwesV > 0.01) {
+        giaoDichs.push({
+          tuThanhVienId: u.id,
+          tuTen: u.ten,
+          denThanhVienId: v.id,
+          denTen: v.ten,
+          soTien: Math.round(uOwesV * 100) / 100,
+          daTra: true
+        });
+        uOwesV = 0;
+      }
+      
+      const vToUPaid = statusMap?.get(`${v.id}-${u.id}`) || false;
+      if (vToUPaid && vOwesU > 0.01) {
+        giaoDichs.push({
+          tuThanhVienId: v.id,
+          tuTen: v.ten,
+          denThanhVienId: u.id,
+          denTen: u.ten,
+          soTien: Math.round(vOwesU * 100) / 100,
+          daTra: true
+        });
+        vOwesU = 0;
+      }
       
       const diff = uOwesV - vOwesU;
       if (diff > 0.01) {
@@ -251,7 +280,8 @@ function tinhChuyenKhoanSongPhuong(
           tuTen: u.ten,
           denThanhVienId: v.id,
           denTen: v.ten,
-          soTien: Math.round(diff * 100) / 100
+          soTien: Math.round(diff * 100) / 100,
+          daTra: false
         });
       } else if (diff < -0.01) {
         giaoDichs.push({
@@ -259,7 +289,8 @@ function tinhChuyenKhoanSongPhuong(
           tuTen: v.ten,
           denThanhVienId: u.id,
           denTen: u.ten,
-          soTien: Math.round(Math.abs(diff) * 100) / 100
+          soTien: Math.round(Math.abs(diff) * 100) / 100,
+          daTra: false
         });
       }
     }
@@ -742,28 +773,22 @@ app.get('/api/tong-ket-tuan', async (req, res) => {
       };
     });
 
-    // Tính toán đối trừ chuyển khoản trực tiếp song phương
-    const danhSachChuyenKhoan = tinhChuyenKhoanSongPhuong(tatCaThanhVien, tatCaBuaToi);
-
     // Lấy trạng thái đã trả tiền từ DB cho tuần này
     const statusRes = await pool.query(
       'SELECT tu_thanh_vien_id, den_thanh_vien_id, da_tra FROM trang_thai_chuyen_khoan WHERE ngay_dau_tuan = $1',
-      [new Date(ngayDauTuan)]
+      [ngayDauTuan]
     );
     const statusMap = new Map<string, boolean>();
     statusRes.rows.forEach((r) => {
       statusMap.set(`${r.tu_thanh_vien_id}-${r.den_thanh_vien_id}`, r.da_tra);
     });
 
-    // Gắn thêm trường daTra vào danh sách chuyển khoản
-    const danhSachChuyenKhoanWithStatus = danhSachChuyenKhoan.map((ck) => ({
-      ...ck,
-      daTra: statusMap.get(`${ck.tuThanhVienId}-${ck.denThanhVienId}`) || false
-    }));
+    // Tính toán đối trừ chuyển khoản trực tiếp song phương có xét đến các khoản đã thanh toán trước
+    const danhSachChuyenKhoan = tinhChuyenKhoanSongPhuong(tatCaThanhVien, tatCaBuaToi, statusMap);
 
     return res.json({
       chiTietTongKet,
-      danhSachChuyenKhoan: danhSachChuyenKhoanWithStatus,
+      danhSachChuyenKhoan,
     });
   } catch (error: any) {
     logErrorToFile(error);
@@ -793,18 +818,17 @@ app.post('/api/toggle-chuyen-khoan', async (req, res) => {
       return res.status(400).json({ error: 'Thiếu thông tin cập nhật.' });
     }
 
-    const dateObj = new Date(ngayDauTuan);
-    
     // Upsert trạng thái đã trả tiền
     await pool.query(`
       INSERT INTO trang_thai_chuyen_khoan (ngay_dau_tuan, tu_thanh_vien_id, den_thanh_vien_id, da_tra)
       VALUES ($1, $2, $3, $4)
       ON CONFLICT (ngay_dau_tuan, tu_thanh_vien_id, den_thanh_vien_id)
       DO UPDATE SET da_tra = EXCLUDED.da_tra
-    `, [dateObj, Number(tuThanhVienId), Number(denThanhVienId), !!daTra]);
+    `, [ngayDauTuan, Number(tuThanhVienId), Number(denThanhVienId), !!daTra]);
 
     return res.json({ message: 'Cập nhật trạng thái chuyển khoản thành công.' });
   } catch (error: any) {
+    logErrorToFile(error);
     console.error(error);
     return res.status(500).json({ error: error.message || 'Lỗi hệ thống.' });
   }
