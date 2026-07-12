@@ -552,7 +552,8 @@ function App() {
                 ngayDauTuan: selectedWeekStart,
                 tuThanhVienId: p.tuThanhVienId,
                 denThanhVienId: p.denThanhVienId,
-                daTra: nextStatus
+                daTra: nextStatus,
+                soTien: nextStatus ? p.tongTien : 0
               });
             }
             await handleRefreshSummary();
@@ -570,7 +571,8 @@ function App() {
                 ngayDauTuan: selectedWeekStart,
                 tuThanhVienId: r.tuThanhVienId,
                 denThanhVienId: r.denThanhVienId,
-                daTra: nextStatus
+                daTra: nextStatus,
+                soTien: nextStatus ? r.tongTien : 0
               });
             }
             await handleRefreshSummary();
@@ -686,11 +688,18 @@ function App() {
                                 </div>
                                 
                                 <div className="flex items-center gap-3">
-                                  <span className={`font-mono font-extrabold text-sm ${
-                                    gd.daTra ? 'text-slate-500 line-through' : 'text-indigo-300'
-                                  }`}>
-                                    {formatVND(gd.soTien)}
-                                  </span>
+                                  <div className="flex flex-col items-end">
+                                    <span className={`font-mono font-extrabold text-sm ${
+                                      gd.daTra ? 'text-slate-500 line-through' : 'text-indigo-300'
+                                    }`}>
+                                      {formatVND(gd.soTien)}
+                                    </span>
+                                    {!!gd.daTraTruoc && gd.daTraTruoc > 0.01 && !gd.daTra && (
+                                      <span className="text-[9px] text-slate-500 font-semibold mt-0.5">
+                                        (Đã trả trước: {formatVND(gd.daTraTruoc)})
+                                      </span>
+                                    )}
+                                  </div>
                                   <div className="flex items-center gap-1.5">
                                     {recipientHasQr && (
                                       <button
@@ -722,6 +731,7 @@ function App() {
                                             tuThanhVienId: gd.tuThanhVienId,
                                             denThanhVienId: gd.denThanhVienId,
                                             daTra: !gd.daTra,
+                                            soTien: !gd.daTra ? gd.tongTien : 0,
                                           });
                                           await handleRefreshSummary();
                                         } catch (err: any) {
@@ -780,11 +790,18 @@ function App() {
                                 </div>
                                 
                                 <div className="flex items-center gap-3">
-                                  <span className={`font-mono font-extrabold text-sm ${
-                                    gd.daTra ? 'text-slate-500 line-through' : 'text-indigo-300'
-                                  }`}>
-                                    {formatVND(gd.soTien)}
-                                  </span>
+                                  <div className="flex flex-col items-end">
+                                    <span className={`font-mono font-extrabold text-sm ${
+                                      gd.daTra ? 'text-slate-500 line-through' : 'text-indigo-300'
+                                    }`}>
+                                      {formatVND(gd.soTien)}
+                                    </span>
+                                    {!!gd.daTraTruoc && gd.daTraTruoc > 0.01 && !gd.daTra && (
+                                      <span className="text-[9px] text-slate-500 font-semibold mt-0.5">
+                                        (Đã trả trước: {formatVND(gd.daTraTruoc)})
+                                      </span>
+                                    )}
+                                  </div>
                                   <div className="flex items-center gap-1.5">
                                     {recipientHasQr && (
                                       <button
@@ -816,6 +833,7 @@ function App() {
                                             tuThanhVienId: gd.tuThanhVienId,
                                             denThanhVienId: gd.denThanhVienId,
                                             daTra: !gd.daTra,
+                                            soTien: !gd.daTra ? gd.tongTien : 0,
                                           });
                                           await handleRefreshSummary();
                                         } catch (err: any) {

@@ -10,7 +10,7 @@ function logErrorToFile(error: any) {
   try {
     const time = new Date().toLocaleString('vi-VN');
     const message = `[${time}] ${error.stack || error.message || error}\n\n`;
-    fs.appendFileSync('./error.log', message);
+    fs.appendFileSync('c:/Users/Pi/Music/quanlyanuong/backend/error.log', message);
   } catch (err) {
     console.error('Không thể ghi file log:', err);
   }
@@ -66,8 +66,12 @@ app.use(async (req, res, next) => {
         tu_thanh_vien_id INT REFERENCES thanh_vien(id) ON DELETE CASCADE,
         den_thanh_vien_id INT REFERENCES thanh_vien(id) ON DELETE CASCADE,
         da_tra BOOLEAN DEFAULT FALSE,
+        so_tien NUMERIC(12, 2) DEFAULT 0,
         UNIQUE(ngay_dau_tuan, tu_thanh_vien_id, den_thanh_vien_id)
       );
+
+      ALTER TABLE trang_thai_chuyen_khoan
+      ADD COLUMN IF NOT EXISTS so_tien NUMERIC(12, 2) DEFAULT 0;
     `);
 
     // 2. Dọn dẹp bảng bua_toi: Xóa các cột loai và mo_ta thừa vì đã dùng bảng chi_phi_khac riêng biệt
@@ -205,7 +209,7 @@ function tinhChuyenKhoanTuUu(
 function tinhChuyenKhoanSongPhuong(
   tatCaThanhVien: { id: number; ten: string }[],
   tatCaBuaToi: any[],
-  statusMap?: Map<string, boolean>
+  paidMap?: Map<string, { daTra: boolean; soTien: number }>
 ): any[] {
   const netOwed = new Map<string, number>();
   const getOwedKey = (fromId: number, toId: number) => `${fromId}-${toId}`;
@@ -242,56 +246,74 @@ function tinhChuyenKhoanSongPhuong(
       const u = tatCaThanhVien[i];
       const v = tatCaThanhVien[j];
       
-      let uOwesV = netOwed.get(getOwedKey(u.id, v.id)) || 0;
-      let vOwesU = netOwed.get(getOwedKey(v.id, u.id)) || 0;
+      const diff = netOwed.get(getOwedKey(u.id, v.id)) || 0;
+      const vOwesU = netOwed.get(getOwedKey(v.id, u.id)) || 0;
+      const netDiff = diff - vOwesU;
       
-      // Nếu u -> v đã trả tiền trong DB, ta coi khoản nợ của u cho v đã được giải quyết (set về 0)
-      // và đẩy riêng giao dịch đã trả đó ra.
-      const uToVPaid = statusMap?.get(`${u.id}-${v.id}`) || false;
-      if (uToVPaid && uOwesV > 0.01) {
+      const uPaidV_rec = paidMap?.get(`${u.id}-${v.id}`);
+      const uPaidV_raw = uPaidV_rec?.daTra ? Number(uPaidV_rec.soTien || 0) : 0;
+      const uPaidV_amount = uPaidV_raw > 0.01 ? uPaidV_raw : (uPaidV_rec?.daTra ? diff : 0);
+      
+      const vPaidU_rec = paidMap?.get(`${v.id}-${u.id}`);
+      const vPaidU_raw = vPaidU_rec?.daTra ? Number(vPaidU_rec.soTien || 0) : 0;
+      const vPaidU_amount = vPaidU_raw > 0.01 ? vPaidU_raw : (vPaidU_rec?.daTra ? vOwesU : 0);
+      
+      const uOwesV_unpaid = Math.max(0, diff - uPaidV_amount);
+      const vOwesU_unpaid = Math.max(0, vOwesU - vPaidU_amount);
+      
+      const unpaidDiff = uOwesV_unpaid - vOwesU_unpaid;
+      
+      if (unpaidDiff > 0.01) {
+        // Net unpaid direction is u -> v
         giaoDichs.push({
           tuThanhVienId: u.id,
           tuTen: u.ten,
           denThanhVienId: v.id,
           denTen: v.ten,
-          soTien: Math.round(uOwesV * 100) / 100,
-          daTra: true
+          soTien: Math.round(unpaidDiff * 100) / 100,
+          tongTien: Math.round((uPaidV_amount + unpaidDiff) * 100) / 100,
+          daTra: false,
+          daTraTruoc: Math.round(uPaidV_amount * 100) / 100
         });
-        uOwesV = 0;
-      }
-      
-      const vToUPaid = statusMap?.get(`${v.id}-${u.id}`) || false;
-      if (vToUPaid && vOwesU > 0.01) {
+      } else if (unpaidDiff < -0.01) {
+        // Net unpaid direction is v -> u
+        const unpaidAmount = Math.abs(unpaidDiff);
         giaoDichs.push({
           tuThanhVienId: v.id,
           tuTen: v.ten,
           denThanhVienId: u.id,
           denTen: u.ten,
-          soTien: Math.round(vOwesU * 100) / 100,
-          daTra: true
+          soTien: Math.round(unpaidAmount * 100) / 100,
+          tongTien: Math.round((vPaidU_amount + unpaidAmount) * 100) / 100,
+          daTra: false,
+          daTraTruoc: Math.round(vPaidU_amount * 100) / 100
         });
-        vOwesU = 0;
-      }
-      
-      const diff = uOwesV - vOwesU;
-      if (diff > 0.01) {
-        giaoDichs.push({
-          tuThanhVienId: u.id,
-          tuTen: u.ten,
-          denThanhVienId: v.id,
-          denTen: v.ten,
-          soTien: Math.round(diff * 100) / 100,
-          daTra: false
-        });
-      } else if (diff < -0.01) {
-        giaoDichs.push({
-          tuThanhVienId: v.id,
-          tuTen: v.ten,
-          denThanhVienId: u.id,
-          denTen: u.ten,
-          soTien: Math.round(Math.abs(diff) * 100) / 100,
-          daTra: false
-        });
+      } else {
+        // Fully paid: unpaidDiff is zero. The direction of completed transaction matches the original meal debt direction netDiff.
+        if (netDiff > 0.01) {
+          giaoDichs.push({
+            tuThanhVienId: u.id,
+            tuTen: u.ten,
+            denThanhVienId: v.id,
+            denTen: v.ten,
+            soTien: Math.round(netDiff * 100) / 100,
+            tongTien: Math.round(netDiff * 100) / 100,
+            daTra: true,
+            daTraTruoc: Math.round(uPaidV_amount * 100) / 100
+          });
+        } else if (netDiff < -0.01) {
+          const absDiff = Math.abs(netDiff);
+          giaoDichs.push({
+            tuThanhVienId: v.id,
+            tuTen: v.ten,
+            denThanhVienId: u.id,
+            denTen: u.ten,
+            soTien: Math.round(absDiff * 100) / 100,
+            tongTien: Math.round(absDiff * 100) / 100,
+            daTra: true,
+            daTraTruoc: Math.round(vPaidU_amount * 100) / 100
+          });
+        }
       }
     }
   }
@@ -775,16 +797,19 @@ app.get('/api/tong-ket-tuan', async (req, res) => {
 
     // Lấy trạng thái đã trả tiền từ DB cho tuần này
     const statusRes = await pool.query(
-      'SELECT tu_thanh_vien_id, den_thanh_vien_id, da_tra FROM trang_thai_chuyen_khoan WHERE ngay_dau_tuan = $1',
+      'SELECT tu_thanh_vien_id, den_thanh_vien_id, da_tra, COALESCE(so_tien, 0) as so_tien FROM trang_thai_chuyen_khoan WHERE ngay_dau_tuan = $1',
       [ngayDauTuan]
     );
-    const statusMap = new Map<string, boolean>();
+    const paidMap = new Map<string, { daTra: boolean; soTien: number }>();
     statusRes.rows.forEach((r) => {
-      statusMap.set(`${r.tu_thanh_vien_id}-${r.den_thanh_vien_id}`, r.da_tra);
+      paidMap.set(`${r.tu_thanh_vien_id}-${r.den_thanh_vien_id}`, {
+        daTra: !!r.da_tra,
+        soTien: Number(r.so_tien || 0),
+      });
     });
 
     // Tính toán đối trừ chuyển khoản trực tiếp song phương có xét đến các khoản đã thanh toán trước
-    const danhSachChuyenKhoan = tinhChuyenKhoanSongPhuong(tatCaThanhVien, tatCaBuaToi, statusMap);
+    const danhSachChuyenKhoan = tinhChuyenKhoanSongPhuong(tatCaThanhVien, tatCaBuaToi, paidMap);
 
     return res.json({
       chiTietTongKet,
@@ -813,18 +838,18 @@ app.delete('/api/xoa-bua-toi/:id', async (req, res) => {
 // 9. Cập nhật trạng thái chuyển khoản (đã trả / chưa trả)
 app.post('/api/toggle-chuyen-khoan', async (req, res) => {
   try {
-    const { ngayDauTuan, tuThanhVienId, denThanhVienId, daTra } = req.body;
+    const { ngayDauTuan, tuThanhVienId, denThanhVienId, daTra, soTien } = req.body;
     if (!ngayDauTuan || !tuThanhVienId || !denThanhVienId) {
       return res.status(400).json({ error: 'Thiếu thông tin cập nhật.' });
     }
 
     // Upsert trạng thái đã trả tiền
     await pool.query(`
-      INSERT INTO trang_thai_chuyen_khoan (ngay_dau_tuan, tu_thanh_vien_id, den_thanh_vien_id, da_tra)
-      VALUES ($1, $2, $3, $4)
+      INSERT INTO trang_thai_chuyen_khoan (ngay_dau_tuan, tu_thanh_vien_id, den_thanh_vien_id, da_tra, so_tien)
+      VALUES ($1, $2, $3, $4, $5)
       ON CONFLICT (ngay_dau_tuan, tu_thanh_vien_id, den_thanh_vien_id)
-      DO UPDATE SET da_tra = EXCLUDED.da_tra
-    `, [ngayDauTuan, Number(tuThanhVienId), Number(denThanhVienId), !!daTra]);
+      DO UPDATE SET da_tra = EXCLUDED.da_tra, so_tien = EXCLUDED.so_tien
+    `, [ngayDauTuan, Number(tuThanhVienId), Number(denThanhVienId), !!daTra, Number(soTien || 0)]);
 
     return res.json({ message: 'Cập nhật trạng thái chuyển khoản thành công.' });
   } catch (error: any) {

@@ -43,7 +43,9 @@ export interface GiaoDich {
   denThanhVienId: number;
   denTen: string;
   soTien: number;
+  tongTien: number;
   daTra?: boolean;
+  daTraTruoc?: number;
 }
 
 export interface TongKetResponse {
@@ -125,6 +127,7 @@ export const toggleChuyenKhoan = async (payload: {
   tuThanhVienId: number;
   denThanhVienId: number;
   daTra: boolean;
+  soTien: number;
 }): Promise<{ message: string }> => {
   const response = await api.post('/toggle-chuyen-khoan', payload);
   return response.data;
