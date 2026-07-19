@@ -544,6 +544,18 @@ function App() {
         const allPaid = bilateralTransfers.payables.every(p => p.daTra);
         const allReceived = bilateralTransfers.receivables.every(r => r.daTra);
 
+        const remainingPayable = bilateralTransfers.payables
+          .filter(p => !p.daTra)
+          .reduce((sum, p) => sum + p.soTien, 0);
+        const displayRemainingPayable = Math.max(0, remainingPayable);
+        const paidAmount = Math.max(0, Math.abs(activeCreditor.netBalance) - displayRemainingPayable);
+
+        const remainingReceivable = bilateralTransfers.receivables
+          .filter(r => !r.daTra)
+          .reduce((sum, r) => sum + r.soTien, 0);
+        const displayRemainingReceivable = Math.max(0, remainingReceivable);
+        const receivedAmount = Math.max(0, activeCreditor.netBalance - displayRemainingReceivable);
+
         const handleToggleAllPayables = async () => {
           const nextStatus = !allPaid;
           try {
@@ -597,11 +609,21 @@ function App() {
                     <span className="text-xs text-slate-400">
                       {isDebtor ? (
                         <>
-                          Tổng tiền cần chuyển trả: <span className="text-rose-400 font-extrabold font-mono">{formatVND(Math.abs(activeCreditor.netBalance))}</span>
+                          Cần chuyển trả: <span className="text-rose-400 font-extrabold font-mono">{formatVND(displayRemainingPayable)}</span>
+                          {paidAmount > 0.01 && (
+                            <span className="text-[10px] text-slate-500 font-semibold ml-2">
+                              (Đã trả: {formatVND(paidAmount)} / Tổng: {formatVND(Math.abs(activeCreditor.netBalance))})
+                            </span>
+                          )}
                         </>
                       ) : (
                         <>
-                          Tổng tiền được nhận lại: <span className="text-emerald-400 font-extrabold font-mono">{formatVND(activeCreditor.netBalance)}</span>
+                          Được nhận lại: <span className="text-emerald-400 font-extrabold font-mono">{formatVND(displayRemainingReceivable)}</span>
+                          {receivedAmount > 0.01 && (
+                            <span className="text-[10px] text-slate-500 font-semibold ml-2">
+                              (Đã nhận: {formatVND(receivedAmount)} / Tổng: {formatVND(activeCreditor.netBalance)})
+                            </span>
+                          )}
                         </>
                       )}
                     </span>
