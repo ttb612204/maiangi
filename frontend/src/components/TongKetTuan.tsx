@@ -93,6 +93,20 @@ export const TongKetTuan: React.FC<TongKetTuanProps> = React.memo(({
                   const isCreditor = ct.netBalance > 0.01;
                   const isDebtor = ct.netBalance < -0.01;
                   
+                  // Tính số tiền còn lại thực tế
+                  let remaining = 0;
+                  if (isCreditor && tongKet) {
+                    remaining = tongKet.danhSachChuyenKhoan
+                      .filter(ck => ck.denThanhVienId === ct.thanhVienId && !ck.daTra)
+                      .reduce((sum, ck) => sum + ck.soTien, 0);
+                  } else if (isDebtor && tongKet) {
+                    remaining = tongKet.danhSachChuyenKhoan
+                      .filter(ck => ck.tuThanhVienId === ct.thanhVienId && !ck.daTra)
+                      .reduce((sum, ck) => sum + ck.soTien, 0);
+                  }
+                  const displayRemaining = Math.max(0, remaining);
+                  const settledAmount = Math.max(0, Math.abs(ct.netBalance) - displayRemaining);
+                  
                   return (
                     <div
                       key={ct.thanhVienId}
@@ -119,10 +133,14 @@ export const TongKetTuan: React.FC<TongKetTuanProps> = React.memo(({
                         <span className={`text-sm font-extrabold ${
                           isCreditor ? 'text-emerald-400' : isDebtor ? 'text-rose-400' : 'text-slate-400'
                         }`}>
-                          {isCreditor ? '+' : ''}{formatVND(ct.netBalance)}
+                          {isCreditor ? '+' : isDebtor ? '-' : ''}{formatVND(displayRemaining)}
                         </span>
                         <span className="block text-[9px] text-slate-500 mt-0.5 font-normal">
-                          {isCreditor ? 'Nhận lại' : isDebtor ? 'Cần chuyển trả' : 'Đã hòa'}
+                          {isCreditor ? (
+                            settledAmount > 0.01 ? `Đã nhận: ${formatVND(settledAmount)} / Tổng: ${formatVND(ct.netBalance)}` : 'Nhận lại'
+                          ) : isDebtor ? (
+                            settledAmount > 0.01 ? `Đã trả: ${formatVND(settledAmount)} / Tổng: ${formatVND(Math.abs(ct.netBalance))}` : 'Cần chuyển trả'
+                          ) : 'Đã hòa'}
                         </span>
                       </div>
                     </div>
