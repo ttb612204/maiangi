@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { 
   Receipt, 
   Utensils, 
@@ -33,6 +33,7 @@ export const BangChiPhi: React.FC<BangChiPhiProps> = React.memo(({
   const [filterType, setFilterType] = useState<'all' | 'bua_toi' | 'chi_phi_khac'>('all');
   const [filterDate, setFilterDate] = useState<string>('');
   const [currentPage, setCurrentPage] = useState(1);
+  const dateInputRef = useRef<HTMLInputElement>(null);
   const ITEMS_PER_PAGE = 10;
 
   const formatVND = (amount: number) => {
@@ -174,20 +175,39 @@ export const BangChiPhi: React.FC<BangChiPhiProps> = React.memo(({
 
         {/* Lọc theo chọn ngày */}
         <div className="flex items-center gap-2">
-          <div className="relative flex items-center bg-slate-900/80 border border-slate-800 rounded-xl px-3 py-1.5 focus-within:border-indigo-500 transition-colors">
-            <Calendar className="w-4 h-4 text-indigo-400 mr-2 shrink-0" />
-            <span className="text-xs text-slate-400 mr-2 hidden sm:inline whitespace-nowrap">Chọn ngày:</span>
+          <div 
+            onClick={() => {
+              try {
+                dateInputRef.current?.showPicker?.();
+              } catch {}
+            }}
+            className="relative flex items-center bg-slate-900/90 border border-slate-800 hover:border-indigo-500/50 rounded-xl px-3 py-1.5 focus-within:border-indigo-500 transition-colors cursor-pointer shadow-sm group"
+          >
+            <Calendar className="w-4 h-4 text-indigo-400 mr-2 shrink-0 group-hover:scale-110 transition-transform" />
+            <span className="text-xs text-slate-300 mr-2 whitespace-nowrap select-none">Chọn ngày:</span>
             <input
+              ref={dateInputRef}
               type="date"
               value={filterDate}
+              onClick={(e) => {
+                e.stopPropagation();
+                try {
+                  e.currentTarget.showPicker?.();
+                } catch {}
+              }}
               onChange={(e) => { setFilterDate(e.target.value); setCurrentPage(1); }}
+              style={{ colorScheme: 'dark' }}
               className="bg-transparent text-xs text-white focus:outline-none font-mono cursor-pointer"
             />
             {filterDate && (
               <button
                 type="button"
-                onClick={() => { setFilterDate(''); setCurrentPage(1); }}
-                className="ml-2 text-slate-400 hover:text-rose-400 text-xs px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-750 font-medium transition-colors cursor-pointer"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setFilterDate('');
+                  setCurrentPage(1);
+                }}
+                className="ml-2 text-slate-400 hover:text-rose-400 text-xs px-2 py-0.5 rounded-lg bg-slate-800 hover:bg-slate-750 font-medium transition-colors cursor-pointer border border-slate-700 whitespace-nowrap"
                 title="Bỏ chọn ngày để xem tất cả"
               >
                 Tất cả ngày
