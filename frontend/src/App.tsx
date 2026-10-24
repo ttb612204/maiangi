@@ -15,6 +15,7 @@ import {
   ThanhVien,
   BuaToi,
   NguoiTraTien,
+  NguoiAnChiTiet,
   TongKetResponse,
 } from './services/api';
 import { DanhSachThanhVien } from './components/DanhSachThanhVien';
@@ -186,6 +187,7 @@ function App() {
     tongTien: number;
     ngayChi: string;
     nguoiChiaIds: number[];
+    chiTietNguoiChia?: NguoiAnChiTiet[];
     nguoiTraTien: NguoiTraTien[];
   }) => {
     try {

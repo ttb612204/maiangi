@@ -72,6 +72,12 @@ app.use(async (req, res, next) => {
 
       ALTER TABLE trang_thai_chuyen_khoan
       ADD COLUMN IF NOT EXISTS so_tien NUMERIC(12, 2) DEFAULT 0;
+
+      ALTER TABLE nguoi_an
+      ADD COLUMN IF NOT EXISTS so_tien NUMERIC(12, 2) DEFAULT 0;
+
+      ALTER TABLE nguoi_chia_chi_phi
+      ADD COLUMN IF NOT EXISTS so_tien NUMERIC(12, 2) DEFAULT 0;
     `);
 
     // 2. Dọn dẹp bảng bua_toi: Xóa các cột loai và mo_ta thừa vì đã dùng bảng chi_phi_khac riêng biệt
@@ -115,7 +121,8 @@ function tinhTienBuoiToi(
   tongTien: number,
   nguoiAnIds: number[],
   nguoiTraTien: { thanhVienId: number; soTienDaTra: number }[],
-  tatCaThanhVienIds: number[]
+  tatCaThanhVienIds: number[],
+  chiTietNguoiAn?: { thanhVienId: number; soTien?: number }[]
 ): KetQuaChiaTien[] {
   const soNguoiAn = nguoiAnIds.length;
   const tienMoiNguoi = soNguoiAn > 0 ? tongTien / soNguoiAn : 0;
@@ -124,7 +131,16 @@ function tinhTienBuoiToi(
     const isNguoiAn = nguoiAnIds.includes(thanhVienId);
     const paidRecord = nguoiTraTien.find((p) => p.thanhVienId === thanhVienId);
     const soTienDaTra = paidRecord ? paidRecord.soTienDaTra : 0;
-    const soTienPhaiTra = isNguoiAn ? tienMoiNguoi : 0;
+    
+    let soTienPhaiTra = 0;
+    if (isNguoiAn) {
+      const detailed = chiTietNguoiAn?.find((c) => c.thanhVienId === thanhVienId);
+      if (detailed && Number(detailed.soTien) > 0) {
+        soTienPhaiTra = Number(detailed.soTien);
+      } else {
+        soTienPhaiTra = tienMoiNguoi;
+      }
+    }
     const balance = soTienDaTra - soTienPhaiTra;
 
     return {
@@ -225,6 +241,9 @@ function tinhChuyenKhoanSongPhuong(
     
     // Với mỗi người ăn B
     for (const B of bt.nguoiAnIds) {
+      const detailed = bt.chiTietNguoiAn?.find((c: any) => c.thanhVienId === B);
+      const tienMoiNguoi = (detailed && Number(detailed.soTien) > 0) ? Number(detailed.soTien) : (bt.tongTien / countNguoiAn);
+
       // Mỗi người trả tiền A tài trợ cho B một phần
       for (const p of bt.nguoiTraTien) {
         if (p.soTienDaTra <= 0) continue;
@@ -466,12 +485,23 @@ app.post('/api/them-bua-toi', async (req, res) => {
     );
     const buaToiId = insertRes.rows[0].id;
 
-    // Thêm danh sách người ăn
-    for (const tvId of nguoiAnIds) {
-      await client.query(
-        'INSERT INTO nguoi_an (bua_toi_id, thanh_vien_id) VALUES ($1, $2)',
-        [buaToiId, tvId]
-      );
+    // Thêm danh sách người ăn kèm số tiền
+    const chiTietNguoiAn = req.body.chiTietNguoiAn;
+    if (Array.isArray(chiTietNguoiAn) && chiTietNguoiAn.length > 0) {
+      for (const item of chiTietNguoiAn) {
+        await client.query(
+          'INSERT INTO nguoi_an (bua_toi_id, thanh_vien_id, so_tien) VALUES ($1, $2, $3)',
+          [buaToiId, Number(item.thanhVienId), Number(item.soTien || 0)]
+        );
+      }
+    } else {
+      const perEater = nguoiAnIds.length > 0 ? tongTien / nguoiAnIds.length : 0;
+      for (const tvId of nguoiAnIds) {
+        await client.query(
+          'INSERT INTO nguoi_an (bua_toi_id, thanh_vien_id, so_tien) VALUES ($1, $2, $3)',
+          [buaToiId, Number(tvId), perEater]
+        );
+      }
     }
 
     // Thêm danh sách người trả tiền
@@ -541,12 +571,23 @@ app.post('/api/them-chi-phi-khac', async (req, res) => {
     );
     const chiPhiId = insertRes.rows[0].id;
 
-    // Thêm danh sách người chia sẻ
-    for (const tvId of nguoiChiaIds) {
-      await client.query(
-        'INSERT INTO nguoi_chia_chi_phi (chi_phi_id, thanh_vien_id) VALUES ($1, $2)',
-        [chiPhiId, tvId]
-      );
+    // Thêm danh sách người chia sẻ kèm số tiền
+    const chiTietNguoiChia = req.body.chiTietNguoiChia;
+    if (Array.isArray(chiTietNguoiChia) && chiTietNguoiChia.length > 0) {
+      for (const item of chiTietNguoiChia) {
+        await client.query(
+          'INSERT INTO nguoi_chia_chi_phi (chi_phi_id, thanh_vien_id, so_tien) VALUES ($1, $2, $3)',
+          [chiPhiId, Number(item.thanhVienId), Number(item.soTien || 0)]
+        );
+      }
+    } else {
+      const perEater = nguoiChiaIds.length > 0 ? tongTien / nguoiChiaIds.length : 0;
+      for (const tvId of nguoiChiaIds) {
+        await client.query(
+          'INSERT INTO nguoi_chia_chi_phi (chi_phi_id, thanh_vien_id, so_tien) VALUES ($1, $2, $3)',
+          [chiPhiId, Number(tvId), perEater]
+        );
+      }
     }
 
     // Thêm danh sách người trả tiền
@@ -614,17 +655,21 @@ app.get('/api/danh-sach-bua-toi', async (req, res) => {
     `, params);
 
     // 2. SELECT relations for all meals/expenses
-    const eatersRes = await pool.query('SELECT bua_toi_id, thanh_vien_id FROM nguoi_an');
+    const eatersRes = await pool.query('SELECT bua_toi_id, thanh_vien_id, COALESCE(so_tien, 0) as so_tien FROM nguoi_an');
     const payersRes = await pool.query('SELECT bua_toi_id, thanh_vien_id, so_tien_da_tra FROM nguoi_tra_tien');
-    const cpEatersRes = await pool.query('SELECT chi_phi_id, thanh_vien_id FROM nguoi_chia_chi_phi');
+    const cpEatersRes = await pool.query('SELECT chi_phi_id, thanh_vien_id, COALESCE(so_tien, 0) as so_tien FROM nguoi_chia_chi_phi');
     const cpPayersRes = await pool.query('SELECT chi_phi_id, thanh_vien_id, so_tien_da_tra FROM nguoi_tra_chi_phi');
 
     // 3. Map dinners
     const mappedDinners = dinnersRes.rows.map(row => {
       const buaToiId = row.id;
-      const nguoiAnIds = eatersRes.rows
+      const chiTietNguoiAn = eatersRes.rows
         .filter((r) => r.bua_toi_id === buaToiId)
-        .map((r) => Number(r.thanh_vien_id));
+        .map((r) => ({
+          thanhVienId: Number(r.thanh_vien_id),
+          soTien: Number(r.so_tien || 0),
+        }));
+      const nguoiAnIds = chiTietNguoiAn.map(r => r.thanhVienId);
       const nguoiTraTien = payersRes.rows
         .filter((r) => r.bua_toi_id === buaToiId)
         .map((r) => ({
@@ -640,6 +685,7 @@ app.get('/api/danh-sach-bua-toi', async (req, res) => {
         loai: 'bua_toi',
         moTa: '',
         nguoiAnIds,
+        chiTietNguoiAn,
         nguoiTraTien
       };
     });
@@ -647,9 +693,13 @@ app.get('/api/danh-sach-bua-toi', async (req, res) => {
     // 4. Map expenses
     const mappedExpenses = expensesRes.rows.map(row => {
       const chiPhiId = row.id;
-      const nguoiAnIds = cpEatersRes.rows
+      const chiTietNguoiAn = cpEatersRes.rows
         .filter((r) => r.chi_phi_id === chiPhiId)
-        .map((r) => Number(r.thanh_vien_id));
+        .map((r) => ({
+          thanhVienId: Number(r.thanh_vien_id),
+          soTien: Number(r.so_tien || 0),
+        }));
+      const nguoiAnIds = chiTietNguoiAn.map(r => r.thanhVienId);
       const nguoiTraTien = cpPayersRes.rows
         .filter((r) => r.chi_phi_id === chiPhiId)
         .map((r) => ({
@@ -665,6 +715,7 @@ app.get('/api/danh-sach-bua-toi', async (req, res) => {
         loai: 'chi_phi_khac',
         moTa: row.moTa || '',
         nguoiAnIds,
+        chiTietNguoiAn,
         nguoiTraTien
       };
     });
@@ -715,16 +766,20 @@ app.get(['/api/tong-ket-tuan', '/api/tong-ket'], async (req, res) => {
     `, queryParams);
 
     // 3. Lấy tất cả quan hệ người ăn và người trả
-    const eatersRes = await pool.query('SELECT bua_toi_id, thanh_vien_id FROM nguoi_an');
+    const eatersRes = await pool.query('SELECT bua_toi_id, thanh_vien_id, COALESCE(so_tien, 0) as so_tien FROM nguoi_an');
     const payersRes = await pool.query('SELECT bua_toi_id, thanh_vien_id, so_tien_da_tra FROM nguoi_tra_tien');
-    const cpEatersRes = await pool.query('SELECT chi_phi_id, thanh_vien_id FROM nguoi_chia_chi_phi');
+    const cpEatersRes = await pool.query('SELECT chi_phi_id, thanh_vien_id, COALESCE(so_tien, 0) as so_tien FROM nguoi_chia_chi_phi');
     const cpPayersRes = await pool.query('SELECT chi_phi_id, thanh_vien_id, so_tien_da_tra FROM nguoi_tra_chi_phi');
 
     const mappedDinners = dinnersRes.rows.map(row => {
       const buaToiId = row.id;
-      const nguoiAnIds = eatersRes.rows
+      const chiTietNguoiAn = eatersRes.rows
         .filter((r) => r.bua_toi_id === buaToiId)
-        .map((r) => Number(r.thanh_vien_id));
+        .map((r) => ({
+          thanhVienId: Number(r.thanh_vien_id),
+          soTien: Number(r.so_tien || 0),
+        }));
+      const nguoiAnIds = chiTietNguoiAn.map(r => r.thanhVienId);
       const nguoiTraTien = payersRes.rows
         .filter((r) => r.bua_toi_id === buaToiId)
         .map((r) => ({
@@ -740,15 +795,20 @@ app.get(['/api/tong-ket-tuan', '/api/tong-ket'], async (req, res) => {
         loai: 'bua_toi',
         moTa: '',
         nguoiAnIds,
+        chiTietNguoiAn,
         nguoiTraTien
       };
     });
 
     const mappedExpenses = expensesRes.rows.map(row => {
       const chiPhiId = row.id;
-      const nguoiAnIds = cpEatersRes.rows
+      const chiTietNguoiAn = cpEatersRes.rows
         .filter((r) => r.chi_phi_id === chiPhiId)
-        .map((r) => Number(r.thanh_vien_id));
+        .map((r) => ({
+          thanhVienId: Number(r.thanh_vien_id),
+          soTien: Number(r.so_tien || 0),
+        }));
+      const nguoiAnIds = chiTietNguoiAn.map(r => r.thanhVienId);
       const nguoiTraTien = cpPayersRes.rows
         .filter((r) => r.chi_phi_id === chiPhiId)
         .map((r) => ({
@@ -764,6 +824,7 @@ app.get(['/api/tong-ket-tuan', '/api/tong-ket'], async (req, res) => {
         loai: 'chi_phi_khac',
         moTa: row.moTa || '',
         nguoiAnIds,
+        chiTietNguoiAn,
         nguoiTraTien
       };
     });
@@ -784,7 +845,8 @@ app.get(['/api/tong-ket-tuan', '/api/tong-ket'], async (req, res) => {
         buaToi.tongTien,
         buaToi.nguoiAnIds,
         buaToi.nguoiTraTien,
-        tatCaThanhVienIds
+        tatCaThanhVienIds,
+        buaToi.chiTietNguoiAn
       );
 
       result.forEach((res) => {

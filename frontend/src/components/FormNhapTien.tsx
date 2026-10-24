@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { X, Plus, Trash2, Save, Loader2, AlertCircle } from 'lucide-react';
-import { BuaToi, NguoiTraTien, ThanhVien } from '../services/api';
+import { X, Plus, Trash2, Save, Loader2, AlertCircle, Calculator } from 'lucide-react';
+import { BuaToi, NguoiTraTien, ThanhVien, NguoiAnChiTiet } from '../services/api';
 
 export interface DayConfig {
   thu: string;
@@ -54,64 +54,143 @@ export const FormNhapTien: React.FC<FormNhapTienProps> = ({
   onClose,
 }) => {
   const [selectedDate, setSelectedDate] = useState<string>(getTodayString());
-  const [nguoiAnIds, setNguoiAnIds] = useState<number[]>([]);
+  // Quản lý từng người ăn: id -> { isEating: boolean, soTien: number }
+  const [eaterMap, setEaterMap] = useState<Record<number, { isEating: boolean; soTien: number }>>({});
   const [nguoiTraTien, setNguoiTraTien] = useState<NguoiTraTien[]>([]);
+  const [isManualPayerAmount, setIsManualPayerAmount] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  // Tính tổng tiền dựa trên các khoản tiền người trả
-  const tongTien = nguoiTraTien.reduce((sum, curr) => sum + (Number(curr.soTienDaTra) || 0), 0);
+  // Tính tổng tiền từ tiền ăn của từng người
+  const tongTienAn = Object.values(eaterMap).reduce((sum, item) => {
+    return sum + (item.isEating ? (Number(item.soTien) || 0) : 0);
+  }, 0);
 
-  // Load dữ liệu cũ nếu đang chỉnh sửa
+  // Load dữ liệu ban đầu
   useEffect(() => {
     if (buaToi) {
       setSelectedDate(buaToi.ngayAn.split('T')[0]);
-      setNguoiAnIds(buaToi.nguoiAnIds || []);
+      
+      const newEaterMap: Record<number, { isEating: boolean; soTien: number }> = {};
+      const buaToiEaterIds = buaToi.nguoiAnIds || [];
+      const detailedEaters = buaToi.chiTietNguoiAn || [];
+      const defaultPerPerson = buaToiEaterIds.length > 0 ? Math.round(buaToi.tongTien / buaToiEaterIds.length) : 0;
+
+      thanhViens.forEach((tv) => {
+        const isEating = buaToiEaterIds.includes(tv.id);
+        const detailed = detailedEaters.find((d) => d.thanhVienId === tv.id);
+        const amount = detailed && Number(detailed.soTien) > 0 ? Number(detailed.soTien) : (isEating ? defaultPerPerson : 0);
+        newEaterMap[tv.id] = { isEating, soTien: amount };
+      });
+      setEaterMap(newEaterMap);
+
       setNguoiTraTien(buaToi.nguoiTraTien || []);
-    } else if (day) {
-      setSelectedDate(day.dateString);
-      setNguoiAnIds(thanhViens.map((tv) => tv.id));
-      if (thanhViens.length > 0) {
-        setNguoiTraTien([{ thanhVienId: thanhViens[0].id, soTienDaTra: 0 }]);
-      } else {
-        setNguoiTraTien([]);
-      }
+      setIsManualPayerAmount(true);
     } else {
-      setSelectedDate(getTodayString());
-      setNguoiAnIds(thanhViens.map((tv) => tv.id));
+      setSelectedDate(day ? day.dateString : getTodayString());
+      
+      const newEaterMap: Record<number, { isEating: boolean; soTien: number }> = {};
+      thanhViens.forEach((tv) => {
+        newEaterMap[tv.id] = { isEating: true, soTien: 0 };
+      });
+      setEaterMap(newEaterMap);
+
       if (thanhViens.length > 0) {
         setNguoiTraTien([{ thanhVienId: thanhViens[0].id, soTienDaTra: 0 }]);
       } else {
         setNguoiTraTien([]);
       }
+      setIsManualPayerAmount(false);
     }
     setErrorMsg(null);
   }, [buaToi, day, thanhViens]);
 
-  const handleToggleNguoiAn = (id: number) => {
-    if (nguoiAnIds.includes(id)) {
-      setNguoiAnIds(nguoiAnIds.filter((x) => x !== id));
-    } else {
-      setNguoiAnIds([...nguoiAnIds, id]);
+  // Tự động gán số tiền người trả bằng tổng tiền ăn nếu chỉ có 1 người trả và chưa sửa tay
+  useEffect(() => {
+    if (!isManualPayerAmount && nguoiTraTien.length === 1 && tongTienAn > 0) {
+      setNguoiTraTien([{ thanhVienId: nguoiTraTien[0].thanhVienId, soTienDaTra: tongTienAn }]);
     }
+  }, [tongTienAn, isManualPayerAmount, nguoiTraTien.length]);
+
+  const handleToggleEater = (id: number) => {
+    setEaterMap((prev) => {
+      const current = prev[id] || { isEating: false, soTien: 0 };
+      return {
+        ...prev,
+        [id]: { ...current, isEating: !current.isEating },
+      };
+    });
   };
 
-  const handleSelectAllNguoiAn = () => {
-    setNguoiAnIds(thanhViens.map((tv) => tv.id));
+  const handleChangeEaterAmount = (id: number, amount: number) => {
+    setEaterMap((prev) => {
+      const current = prev[id] || { isEating: true, soTien: 0 };
+      return {
+        ...prev,
+        [id]: { ...current, isEating: true, soTien: amount },
+      };
+    });
   };
 
-  const handleDeselectAllNguoiAn = () => {
-    setNguoiAnIds([]);
+  const handleSelectAllEaters = () => {
+    setEaterMap((prev) => {
+      const updated: Record<number, { isEating: boolean; soTien: number }> = {};
+      thanhViens.forEach((tv) => {
+        updated[tv.id] = { isEating: true, soTien: prev[tv.id]?.soTien || 0 };
+      });
+      return updated;
+    });
+  };
+
+  const handleDeselectAllEaters = () => {
+    setEaterMap(() => {
+      const updated: Record<number, { isEating: boolean; soTien: number }> = {};
+      thanhViens.forEach((tv) => {
+        updated[tv.id] = { isEating: false, soTien: 0 };
+      });
+      return updated;
+    });
+  };
+
+  // Chia đều số tiền cho các thành viên được chọn
+  const handleSplitEqually = () => {
+    const checkedMembers = thanhViens.filter((tv) => eaterMap[tv.id]?.isEating);
+    if (checkedMembers.length === 0) {
+      alert('Vui lòng chọn ít nhất một người tham gia ăn để chia đều.');
+      return;
+    }
+    const inputTotal = prompt('Nhập tổng số tiền bữa ăn để chia đều:', tongTienAn > 0 ? String(tongTienAn) : '');
+    if (!inputTotal) return;
+    const totalNum = Number(inputTotal);
+    if (isNaN(totalNum) || totalNum <= 0) {
+      alert('Số tiền không hợp lệ.');
+      return;
+    }
+
+    const perPerson = Math.round(totalNum / checkedMembers.length);
+    setEaterMap((prev) => {
+      const updated = { ...prev };
+      checkedMembers.forEach((tv) => {
+        updated[tv.id] = { isEating: true, soTien: perPerson };
+      });
+      return updated;
+    });
+
+    if (nguoiTraTien.length === 1) {
+      setNguoiTraTien([{ thanhVienId: nguoiTraTien[0].thanhVienId, soTienDaTra: totalNum }]);
+    }
   };
 
   const handleAddNguoiTra = () => {
     const available = thanhViens.find((tv) => !nguoiTraTien.some((ntt) => ntt.thanhVienId === tv.id));
     const nextId = available ? available.id : (thanhViens[0]?.id || 0);
     setNguoiTraTien([...nguoiTraTien, { thanhVienId: nextId, soTienDaTra: 0 }]);
+    setIsManualPayerAmount(true);
   };
 
   const handleRemoveNguoiTra = (index: number) => {
     setNguoiTraTien(nguoiTraTien.filter((_, idx) => idx !== index));
+    setIsManualPayerAmount(true);
   };
 
   const handleChangeNguoiTraId = (index: number, newId: number) => {
@@ -124,6 +203,7 @@ export const FormNhapTien: React.FC<FormNhapTienProps> = ({
     const updated = [...nguoiTraTien];
     updated[index].soTienDaTra = amount;
     setNguoiTraTien(updated);
+    setIsManualPayerAmount(true);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -135,13 +215,21 @@ export const FormNhapTien: React.FC<FormNhapTienProps> = ({
       return;
     }
 
-    if (tongTien <= 0) {
-      setErrorMsg('Vui lòng nhập số tiền cho ít nhất một người thanh toán.');
+    const activeEaters: NguoiAnChiTiet[] = thanhViens
+      .filter((tv) => eaterMap[tv.id]?.isEating)
+      .map((tv) => ({
+        thanhVienId: tv.id,
+        soTien: Number(eaterMap[tv.id]?.soTien || 0),
+      }));
+
+    if (activeEaters.length === 0) {
+      setErrorMsg('Vui lòng chọn ít nhất một người tham gia ăn.');
       return;
     }
 
-    if (nguoiAnIds.length === 0) {
-      setErrorMsg('Vui lòng chọn ít nhất một người ăn.');
+    const tongTien = activeEaters.reduce((sum, e) => sum + e.soTien, 0);
+    if (tongTien <= 0) {
+      setErrorMsg('Vui lòng nhập số tiền ăn cho ít nhất một người.');
       return;
     }
 
@@ -150,7 +238,14 @@ export const FormNhapTien: React.FC<FormNhapTienProps> = ({
       return;
     }
 
-    // Kiểm tra xem có trùng lặp người trả tiền không
+    // Đảm bảo người trả tiền có số tiền > 0
+    const tongTienNguoiTra = nguoiTraTien.reduce((sum, p) => sum + (Number(p.soTienDaTra) || 0), 0);
+    if (tongTienNguoiTra <= 0) {
+      setErrorMsg('Vui lòng nhập số tiền người chi trả.');
+      return;
+    }
+
+    // Kiểm tra trùng lặp người trả tiền
     const listPayerIds = nguoiTraTien.map((p) => p.thanhVienId);
     if (new Set(listPayerIds).size !== listPayerIds.length) {
       setErrorMsg('Danh sách người trả tiền không được trùng lặp.');
@@ -164,7 +259,8 @@ export const FormNhapTien: React.FC<FormNhapTienProps> = ({
         thuTrongTuan: getDayOfWeekVietnamese(selectedDate),
         tongTien,
         ngayAn: selectedDate,
-        nguoiAnIds,
+        nguoiAnIds: activeEaters.map((e) => e.thanhVienId),
+        chiTietNguoiAn: activeEaters,
         nguoiTraTien,
       });
       onClose();
@@ -175,8 +271,10 @@ export const FormNhapTien: React.FC<FormNhapTienProps> = ({
     }
   };
 
+  const checkedCount = thanhViens.filter((tv) => eaterMap[tv.id]?.isEating).length;
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="w-full max-w-xl bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
         
         {/* Header */}
@@ -216,6 +314,7 @@ export const FormNhapTien: React.FC<FormNhapTienProps> = ({
                 type="date"
                 value={selectedDate}
                 onChange={(e) => setSelectedDate(e.target.value)}
+                style={{ colorScheme: 'dark' }}
                 className="bg-slate-950/60 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500 font-mono cursor-pointer"
                 required
               />
@@ -227,24 +326,43 @@ export const FormNhapTien: React.FC<FormNhapTienProps> = ({
 
           {/* Tổng tiền hiển thị tự động */}
           <div className="space-y-2">
-            <label className="block text-sm font-semibold text-slate-300">
-              Tổng tiền bữa tối (Tự động tính từ người trả)
-            </label>
-            <div className="w-full bg-slate-950/60 border border-slate-800/80 rounded-xl px-4 py-3.5 text-lg font-extrabold text-indigo-400 font-mono">
-              {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(tongTien)}
+            <div className="flex items-center justify-between">
+              <label className="block text-sm font-semibold text-slate-300">
+                Tổng tiền bữa tối (Tự động cộng tiền của từng người)
+              </label>
+              <button
+                type="button"
+                onClick={handleSplitEqually}
+                className="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1 font-semibold transition-colors cursor-pointer"
+                title="Nhập tổng tiền để chia đều cho mọi người"
+              >
+                <Calculator className="w-3.5 h-3.5" />
+                Chia đều số tiền
+              </button>
+            </div>
+            <div className="w-full bg-slate-950/60 border border-slate-800/80 rounded-xl px-4 py-3 text-lg font-extrabold text-emerald-400 font-mono flex items-center justify-between">
+              <span>{new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(tongTienAn)}</span>
+              <span className="text-xs font-normal text-slate-500">
+                {checkedCount} người tham gia
+              </span>
             </div>
           </div>
 
-          {/* Danh sách người ăn */}
+          {/* Danh sách người ăn & số tiền từng người */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <label className="text-sm font-semibold text-slate-300">
-                Người tham gia ăn ({nguoiAnIds.length}/{thanhViens.length})
-              </label>
+              <div>
+                <label className="text-sm font-semibold text-slate-300">
+                  Số tiền ăn của từng người ({checkedCount}/{thanhViens.length})
+                </label>
+                <span className="block text-[11px] text-slate-500">
+                  Nhập số tiền phần ăn của mỗi thành viên
+                </span>
+              </div>
               <div className="flex items-center gap-2 text-xs">
                 <button
                   type="button"
-                  onClick={handleSelectAllNguoiAn}
+                  onClick={handleSelectAllEaters}
                   className="text-indigo-400 hover:text-indigo-300 transition-colors cursor-pointer"
                 >
                   Tất cả
@@ -252,7 +370,7 @@ export const FormNhapTien: React.FC<FormNhapTienProps> = ({
                 <span className="text-slate-600">|</span>
                 <button
                   type="button"
-                  onClick={handleDeselectAllNguoiAn}
+                  onClick={handleDeselectAllEaters}
                   className="text-slate-400 hover:text-slate-300 transition-colors cursor-pointer"
                 >
                   Bỏ chọn
@@ -260,38 +378,74 @@ export const FormNhapTien: React.FC<FormNhapTienProps> = ({
               </div>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+            {/* Danh sách thành viên kèm ô nhập tiền từng người */}
+            <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
               {thanhViens.map((tv) => {
-                const isSelected = nguoiAnIds.includes(tv.id);
+                const eaterInfo = eaterMap[tv.id] || { isEating: false, soTien: 0 };
+                const isSelected = eaterInfo.isEating;
+
                 return (
-                  <button
+                  <div
                     key={tv.id}
-                    type="button"
-                    onClick={() => handleToggleNguoiAn(tv.id)}
-                    className={`flex items-center justify-between px-3.5 py-2.5 rounded-xl border text-sm font-medium transition-all duration-200 cursor-pointer ${
+                    className={`flex items-center justify-between p-3 rounded-xl border transition-all ${
                       isSelected
-                        ? 'bg-indigo-600/20 border-indigo-500/50 text-indigo-200 shadow-sm'
-                        : 'bg-slate-950/40 border-slate-800 text-slate-400 hover:bg-slate-900/60 hover:text-slate-300'
+                        ? 'bg-slate-900/80 border-indigo-500/40'
+                        : 'bg-slate-950/30 border-slate-800/60 opacity-60'
                     }`}
                   >
-                    <span className="truncate">{tv.ten}</span>
-                    <span
-                      className={`w-2 h-2 rounded-full ${
-                        isSelected ? 'bg-indigo-400' : 'bg-slate-700'
-                      }`}
-                    />
-                  </button>
+                    <div 
+                      onClick={() => handleToggleEater(tv.id)}
+                      className="flex items-center gap-3 cursor-pointer select-none flex-1"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => {}}
+                        className="w-4 h-4 rounded border-slate-700 bg-slate-900 text-indigo-600 focus:ring-indigo-500 pointer-events-none"
+                      />
+                      <span className={`text-sm font-semibold ${isSelected ? 'text-white' : 'text-slate-400'}`}>
+                        {tv.ten}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2 w-44">
+                      <div className="relative flex-1">
+                        <input
+                          type="number"
+                          placeholder="0"
+                          min="0"
+                          step="1000"
+                          value={eaterInfo.soTien === 0 ? '' : eaterInfo.soTien}
+                          onChange={(e) => handleChangeEaterAmount(tv.id, Number(e.target.value))}
+                          disabled={!isSelected}
+                          className={`w-full bg-slate-950/80 border rounded-xl pl-3 pr-7 py-1.5 text-xs text-right font-mono focus:outline-none transition-colors ${
+                            isSelected
+                              ? 'border-slate-700 text-emerald-400 focus:border-indigo-500'
+                              : 'border-slate-850 text-slate-600 cursor-not-allowed'
+                          }`}
+                        />
+                        <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-slate-500 font-mono pointer-events-none">
+                          đ
+                        </span>
+                      </div>
+                    </div>
+                  </div>
                 );
               })}
             </div>
           </div>
 
           {/* Danh sách người trả tiền */}
-          <div className="space-y-3">
+          <div className="space-y-3 pt-2 border-t border-slate-800">
             <div className="flex items-center justify-between">
-              <label className="text-sm font-semibold text-slate-300">
-                Người chi trả tiền
-              </label>
+              <div>
+                <label className="text-sm font-semibold text-slate-300">
+                  Người chi trả tiền
+                </label>
+                <span className="block text-[11px] text-slate-500">
+                  Ai đứng ra thanh toán tổng số tiền trên
+                </span>
+              </div>
               <button
                 type="button"
                 onClick={handleAddNguoiTra}
@@ -312,7 +466,7 @@ export const FormNhapTien: React.FC<FormNhapTienProps> = ({
                   >
                     {thanhViens.map((tv) => (
                       <option key={tv.id} value={tv.id} className="bg-slate-900 text-white">
-                        {tv.ten}
+                        {tv.ten} (Người trả)
                       </option>
                     ))}
                   </select>

@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { X, Plus, Trash2, Save, Loader2, AlertCircle } from 'lucide-react';
-import { BuaToi, NguoiTraTien, ThanhVien } from '../services/api';
+import { X, Plus, Trash2, Save, Loader2, AlertCircle, Calculator } from 'lucide-react';
+import { BuaToi, NguoiTraTien, ThanhVien, NguoiAnChiTiet } from '../services/api';
 
-interface DayConfig {
+export interface DayConfig {
   thu: string;
   dateString: string;
   displayDate: string;
@@ -18,6 +18,7 @@ interface FormChiPhiKhacProps {
     tongTien: number;
     ngayChi: string;
     nguoiChiaIds: number[];
+    chiTietNguoiChia?: NguoiAnChiTiet[];
     nguoiTraTien: NguoiTraTien[];
   }) => Promise<void>;
   onDelete?: (id: number) => Promise<void>;
@@ -62,21 +63,39 @@ export const FormChiPhiKhac: React.FC<FormChiPhiKhacProps> = ({
 }) => {
   const [moTa, setMoTa] = useState('');
   const [selectedDateStr, setSelectedDateStr] = useState('');
-  const [nguoiChiaIds, setNguoiChiaIds] = useState<number[]>([]);
+  // Quản lý từng người chia sẻ: id -> { isSharing: boolean, soTien: number }
+  const [shareMap, setShareMap] = useState<Record<number, { isSharing: boolean; soTien: number }>>({});
   const [nguoiTraTien, setNguoiTraTien] = useState<NguoiTraTien[]>([]);
+  const [isManualPayerAmount, setIsManualPayerAmount] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  // Tính tổng tiền dựa trên các khoản tiền người trả
-  const tongTien = nguoiTraTien.reduce((sum, curr) => sum + (Number(curr.soTienDaTra) || 0), 0);
+  // Tính tổng tiền dựa trên tiền của từng người chia sẻ
+  const tongTienChi = Object.values(shareMap).reduce((sum, item) => {
+    return sum + (item.isSharing ? (Number(item.soTien) || 0) : 0);
+  }, 0);
 
   // Load dữ liệu cũ nếu đang chỉnh sửa
   useEffect(() => {
     if (chiPhi && chiPhi.id) {
       setMoTa(chiPhi.moTa || '');
       setSelectedDateStr(chiPhi.ngayAn.split('T')[0]);
-      setNguoiChiaIds(chiPhi.nguoiAnIds);
-      setNguoiTraTien(chiPhi.nguoiTraTien);
+      
+      const newShareMap: Record<number, { isSharing: boolean; soTien: number }> = {};
+      const chiPhiEaterIds = chiPhi.nguoiAnIds || [];
+      const detailedShares = chiPhi.chiTietNguoiAn || [];
+      const defaultPerPerson = chiPhiEaterIds.length > 0 ? Math.round(chiPhi.tongTien / chiPhiEaterIds.length) : 0;
+
+      thanhViens.forEach((tv) => {
+        const isSharing = chiPhiEaterIds.includes(tv.id);
+        const detailed = detailedShares.find((d) => d.thanhVienId === tv.id);
+        const amount = detailed && Number(detailed.soTien) > 0 ? Number(detailed.soTien) : (isSharing ? defaultPerPerson : 0);
+        newShareMap[tv.id] = { isSharing, soTien: amount };
+      });
+      setShareMap(newShareMap);
+
+      setNguoiTraTien(chiPhi.nguoiTraTien || []);
+      setIsManualPayerAmount(true);
     } else {
       setMoTa('');
       if (chiPhi && chiPhi.ngayAn) {
@@ -86,42 +105,108 @@ export const FormChiPhiKhac: React.FC<FormChiPhiKhacProps> = ({
       } else {
         setSelectedDateStr(getTodayDateString());
       }
-      // Mặc định chọn tất cả mọi người chia sẻ
-      setNguoiChiaIds(thanhViens.map((tv) => tv.id));
-      // Mặc định tạo một dòng thanh toán trống cho người đầu tiên
+      
+      const newShareMap: Record<number, { isSharing: boolean; soTien: number }> = {};
+      thanhViens.forEach((tv) => {
+        newShareMap[tv.id] = { isSharing: true, soTien: 0 };
+      });
+      setShareMap(newShareMap);
+
       if (thanhViens.length > 0) {
         setNguoiTraTien([{ thanhVienId: thanhViens[0].id, soTienDaTra: 0 }]);
       } else {
         setNguoiTraTien([]);
       }
+      setIsManualPayerAmount(false);
     }
     setErrorMsg(null);
   }, [chiPhi, daysOfWeek, thanhViens]);
 
-  const handleToggleNguoiChia = (id: number) => {
-    if (nguoiChiaIds.includes(id)) {
-      setNguoiChiaIds(nguoiChiaIds.filter((x) => x !== id));
-    } else {
-      setNguoiChiaIds([...nguoiChiaIds, id]);
+  // Tự động gán số tiền người trả bằng tổng tiền nếu chỉ có 1 người trả và chưa sửa tay
+  useEffect(() => {
+    if (!isManualPayerAmount && nguoiTraTien.length === 1 && tongTienChi > 0) {
+      setNguoiTraTien([{ thanhVienId: nguoiTraTien[0].thanhVienId, soTienDaTra: tongTienChi }]);
     }
+  }, [tongTienChi, isManualPayerAmount, nguoiTraTien.length]);
+
+  const handleToggleShare = (id: number) => {
+    setShareMap((prev) => {
+      const current = prev[id] || { isSharing: false, soTien: 0 };
+      return {
+        ...prev,
+        [id]: { ...current, isSharing: !current.isSharing },
+      };
+    });
   };
 
-  const handleSelectAllNguoiChia = () => {
-    setNguoiChiaIds(thanhViens.map((tv) => tv.id));
+  const handleChangeShareAmount = (id: number, amount: number) => {
+    setShareMap((prev) => {
+      const current = prev[id] || { isSharing: true, soTien: 0 };
+      return {
+        ...prev,
+        [id]: { ...current, isSharing: true, soTien: amount },
+      };
+    });
   };
 
-  const handleDeselectAllNguoiChia = () => {
-    setNguoiChiaIds([]);
+  const handleSelectAllShares = () => {
+    setShareMap((prev) => {
+      const updated: Record<number, { isSharing: boolean; soTien: number }> = {};
+      thanhViens.forEach((tv) => {
+        updated[tv.id] = { isSharing: true, soTien: prev[tv.id]?.soTien || 0 };
+      });
+      return updated;
+    });
+  };
+
+  const handleDeselectAllShares = () => {
+    setShareMap(() => {
+      const updated: Record<number, { isSharing: boolean; soTien: number }> = {};
+      thanhViens.forEach((tv) => {
+        updated[tv.id] = { isSharing: false, soTien: 0 };
+      });
+      return updated;
+    });
+  };
+
+  const handleSplitEqually = () => {
+    const checkedMembers = thanhViens.filter((tv) => shareMap[tv.id]?.isSharing);
+    if (checkedMembers.length === 0) {
+      alert('Vui lòng chọn ít nhất một người chia sẻ chi phí.');
+      return;
+    }
+    const inputTotal = prompt('Nhập tổng số tiền chi phí để chia đều:', tongTienChi > 0 ? String(tongTienChi) : '');
+    if (!inputTotal) return;
+    const totalNum = Number(inputTotal);
+    if (isNaN(totalNum) || totalNum <= 0) {
+      alert('Số tiền không hợp lệ.');
+      return;
+    }
+
+    const perPerson = Math.round(totalNum / checkedMembers.length);
+    setShareMap((prev) => {
+      const updated = { ...prev };
+      checkedMembers.forEach((tv) => {
+        updated[tv.id] = { isSharing: true, soTien: perPerson };
+      });
+      return updated;
+    });
+
+    if (nguoiTraTien.length === 1) {
+      setNguoiTraTien([{ thanhVienId: nguoiTraTien[0].thanhVienId, soTienDaTra: totalNum }]);
+    }
   };
 
   const handleAddNguoiTra = () => {
     const available = thanhViens.find((tv) => !nguoiTraTien.some((ntt) => ntt.thanhVienId === tv.id));
     const nextId = available ? available.id : (thanhViens[0]?.id || 0);
     setNguoiTraTien([...nguoiTraTien, { thanhVienId: nextId, soTienDaTra: 0 }]);
+    setIsManualPayerAmount(true);
   };
 
   const handleRemoveNguoiTra = (index: number) => {
     setNguoiTraTien(nguoiTraTien.filter((_, idx) => idx !== index));
+    setIsManualPayerAmount(true);
   };
 
   const handleChangeNguoiTraId = (index: number, newId: number) => {
@@ -134,6 +219,7 @@ export const FormChiPhiKhac: React.FC<FormChiPhiKhacProps> = ({
     const updated = [...nguoiTraTien];
     updated[index].soTienDaTra = amount;
     setNguoiTraTien(updated);
+    setIsManualPayerAmount(true);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -145,18 +231,37 @@ export const FormChiPhiKhac: React.FC<FormChiPhiKhacProps> = ({
       return;
     }
 
-    if (tongTien <= 0) {
-      setErrorMsg('Vui lòng nhập số tiền cho ít nhất một người thanh toán.');
+    if (!selectedDateStr) {
+      setErrorMsg('Vui lòng chọn ngày chi tiêu.');
       return;
     }
 
-    if (nguoiChiaIds.length === 0) {
+    const activeSharers: NguoiAnChiTiet[] = thanhViens
+      .filter((tv) => shareMap[tv.id]?.isSharing)
+      .map((tv) => ({
+        thanhVienId: tv.id,
+        soTien: Number(shareMap[tv.id]?.soTien || 0),
+      }));
+
+    if (activeSharers.length === 0) {
       setErrorMsg('Vui lòng chọn ít nhất một người chia sẻ chi phí.');
+      return;
+    }
+
+    const tongTien = activeSharers.reduce((sum, s) => sum + s.soTien, 0);
+    if (tongTien <= 0) {
+      setErrorMsg('Vui lòng nhập số tiền cho ít nhất một người chia sẻ.');
       return;
     }
 
     if (nguoiTraTien.length === 0) {
       setErrorMsg('Vui lòng thêm ít nhất một người trả tiền.');
+      return;
+    }
+
+    const tongTienNguoiTra = nguoiTraTien.reduce((sum, p) => sum + (Number(p.soTienDaTra) || 0), 0);
+    if (tongTienNguoiTra <= 0) {
+      setErrorMsg('Vui lòng nhập số tiền người chi trả.');
       return;
     }
 
@@ -174,7 +279,8 @@ export const FormChiPhiKhac: React.FC<FormChiPhiKhacProps> = ({
         moTa: moTa.trim(),
         tongTien,
         ngayChi: selectedDateStr,
-        nguoiChiaIds,
+        nguoiChiaIds: activeSharers.map((s) => s.thanhVienId),
+        chiTietNguoiChia: activeSharers,
         nguoiTraTien,
       });
       onClose();
@@ -185,8 +291,10 @@ export const FormChiPhiKhac: React.FC<FormChiPhiKhacProps> = ({
     }
   };
 
+  const checkedCount = thanhViens.filter((tv) => shareMap[tv.id]?.isSharing).length;
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="w-full max-w-xl bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
         
         {/* Header */}
@@ -195,11 +303,11 @@ export const FormChiPhiKhac: React.FC<FormChiPhiKhacProps> = ({
             <h3 className="text-lg font-bold text-white">
               {chiPhi && chiPhi.id ? 'Cập Nhật Chi Phí Khác' : 'Thêm Chi Phí Khác'}
             </h3>
-            <p className="text-xs text-slate-400">Gia vị, dầu ăn, quỹ nhóm, chi phí dùng chung...</p>
+            <p className="text-xs text-slate-400">Gia vị, gạo, dầu ăn, xà phòng, quỹ chung...</p>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors"
+            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -216,14 +324,14 @@ export const FormChiPhiKhac: React.FC<FormChiPhiKhacProps> = ({
 
           {/* Mô tả chi phí */}
           <div className="space-y-2">
-            <label className="block text-sm font-semibold text-slate-300">Mô tả chi phí</label>
+            <label className="block text-sm font-semibold text-slate-300">Mô tả khoản chi</label>
             <input
               type="text"
               value={moTa}
               onChange={(e) => setMoTa(e.target.value)}
-              placeholder="Ví dụ: Mua gia vị, bột giặt, nước mắm..."
+              placeholder="Ví dụ: Mua gạo, gia vị, dầu ăn..."
               required
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-200 focus:outline-none focus:border-indigo-500"
+              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 font-medium"
             />
           </div>
 
@@ -235,6 +343,7 @@ export const FormChiPhiKhac: React.FC<FormChiPhiKhacProps> = ({
                 type="date"
                 value={selectedDateStr}
                 onChange={(e) => setSelectedDateStr(e.target.value)}
+                style={{ colorScheme: 'dark' }}
                 className="bg-slate-950/60 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500 font-mono cursor-pointer"
                 required
               />
@@ -246,166 +355,218 @@ export const FormChiPhiKhac: React.FC<FormChiPhiKhacProps> = ({
 
           {/* Tổng tiền tự động */}
           <div className="space-y-2">
-            <label className="block text-sm font-semibold text-slate-300">
-              Tổng tiền chi phí (Tự động tính từ người trả)
-            </label>
-            <div className="w-full bg-slate-950/60 border border-slate-800/80 rounded-xl px-4 py-3.5 text-lg font-extrabold text-pink-400 font-mono">
-              {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(tongTien)}
+            <div className="flex items-center justify-between">
+              <label className="block text-sm font-semibold text-slate-300">
+                Tổng tiền chi phí (Tự động cộng tiền của từng người)
+              </label>
+              <button
+                type="button"
+                onClick={handleSplitEqually}
+                className="text-xs text-fuchsia-400 hover:text-fuchsia-300 flex items-center gap-1 font-semibold transition-colors cursor-pointer"
+                title="Nhập tổng tiền để chia đều cho mọi người"
+              >
+                <Calculator className="w-3.5 h-3.5" />
+                Chia đều số tiền
+              </button>
+            </div>
+            <div className="w-full bg-slate-950/60 border border-slate-800/80 rounded-xl px-4 py-3 text-lg font-extrabold text-fuchsia-400 font-mono flex items-center justify-between">
+              <span>{new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(tongTienChi)}</span>
+              <span className="text-xs font-normal text-slate-500">
+                {checkedCount} người chia sẻ
+              </span>
             </div>
           </div>
 
-          {/* Ai chia sẻ chi phí này */}
+          {/* Ai chia sẻ chi phí này & số tiền từng người */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <label className="block text-sm font-semibold text-slate-300">Ai chia sẻ chi phí này?</label>
-              <div className="flex gap-2">
+              <div>
+                <label className="block text-sm font-semibold text-slate-300">
+                  Số tiền chia của từng người ({checkedCount}/{thanhViens.length})
+                </label>
+                <span className="block text-[11px] text-slate-500">
+                  Nhập số tiền phần chia của mỗi thành viên
+                </span>
+              </div>
+              <div className="flex items-center gap-2 text-xs">
                 <button
                   type="button"
-                  onClick={handleSelectAllNguoiChia}
-                  className="text-xs text-indigo-400 hover:text-indigo-300 hover:underline"
+                  onClick={handleSelectAllShares}
+                  className="text-indigo-400 hover:text-indigo-300 transition-colors cursor-pointer"
                 >
-                  Chọn tất cả
+                  Tất cả
                 </button>
-                <span className="text-slate-700 text-xs">|</span>
+                <span className="text-slate-600">|</span>
                 <button
                   type="button"
-                  onClick={handleDeselectAllNguoiChia}
-                  className="text-xs text-rose-400 hover:text-rose-300 hover:underline"
+                  onClick={handleDeselectAllShares}
+                  className="text-slate-400 hover:text-slate-300 transition-colors cursor-pointer"
                 >
-                  Bỏ chọn tất cả
+                  Bỏ chọn
                 </button>
               </div>
             </div>
 
-            {thanhViens.length === 0 ? (
-              <div className="text-sm text-slate-500 italic">Hãy tạo thành viên trước!</div>
-            ) : (
-              <div className="grid grid-cols-2 gap-2.5">
-                {thanhViens.map((tv) => {
-                  const isChecked = nguoiChiaIds.includes(tv.id);
-                  return (
-                    <label
-                      key={tv.id}
-                      className={`flex items-center gap-3 px-4 py-3 rounded-xl border cursor-pointer select-none transition-all ${
-                        isChecked
-                          ? 'bg-pink-950/15 border-pink-500/30 text-pink-200'
-                          : 'bg-slate-950/40 border-slate-800 text-slate-400 hover:bg-slate-950/60'
-                      }`}
+            <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+              {thanhViens.map((tv) => {
+                const shareInfo = shareMap[tv.id] || { isSharing: false, soTien: 0 };
+                const isSelected = shareInfo.isSharing;
+
+                return (
+                  <div
+                    key={tv.id}
+                    className={`flex items-center justify-between p-3 rounded-xl border transition-all ${
+                      isSelected
+                        ? 'bg-slate-900/80 border-fuchsia-500/40'
+                        : 'bg-slate-950/30 border-slate-800/60 opacity-60'
+                    }`}
+                  >
+                    <div 
+                      onClick={() => handleToggleShare(tv.id)}
+                      className="flex items-center gap-3 cursor-pointer select-none flex-1"
                     >
                       <input
                         type="checkbox"
-                        checked={isChecked}
-                        onChange={() => handleToggleNguoiChia(tv.id)}
-                        className="rounded border-slate-800 text-pink-600 focus:ring-pink-500/30 bg-slate-950 w-4 h-4"
+                        checked={isSelected}
+                        onChange={() => {}}
+                        className="w-4 h-4 rounded border-slate-700 bg-slate-900 text-fuchsia-600 focus:ring-fuchsia-500 pointer-events-none"
                       />
-                      <span className="text-sm font-medium">{tv.ten}</span>
-                    </label>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          {/* Ai trả tiền */}
-          <div className="space-y-3">
-            <label className="block text-sm font-semibold text-slate-300">Ai trả tiền?</label>
-
-            {thanhViens.length === 0 ? (
-              <div className="text-sm text-slate-500 italic">Không có thành viên.</div>
-            ) : (
-              <div className="space-y-2.5">
-                {nguoiTraTien.map((ntt, idx) => (
-                  <div key={idx} className="flex gap-2 items-start bg-slate-950/40 p-2.5 rounded-xl border border-slate-850">
-                    <select
-                      value={ntt.thanhVienId}
-                      onChange={(e) => handleChangeNguoiTraId(idx, Number(e.target.value))}
-                      className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 min-w-[130px]"
-                    >
-                      {thanhViens.map((tv) => (
-                        <option key={tv.id} value={tv.id}>
-                          {tv.ten}
-                        </option>
-                      ))}
-                    </select>
-
-                    <div className="flex-1 flex flex-col">
-                      <input
-                        type="number"
-                        value={ntt.soTienDaTra || ''}
-                        onChange={(e) => handleChangeNguoiTraTien(idx, Number(e.target.value))}
-                        placeholder="Số tiền trả"
-                        required
-                        min="0"
-                        className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-indigo-500"
-                      />
-                      {Number(ntt.soTienDaTra) > 0 && (
-                        <span className="text-[10px] text-pink-400 font-mono mt-1 pl-1">
-                          {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(ntt.soTienDaTra)}
-                        </span>
-                      )}
+                      <span className={`text-sm font-semibold ${isSelected ? 'text-white' : 'text-slate-400'}`}>
+                        {tv.ten}
+                      </span>
                     </div>
 
-                    {nguoiTraTien.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveNguoiTra(idx)}
-                        className="p-2.5 mt-0.5 text-slate-500 hover:text-rose-450 hover:bg-rose-550/10 rounded-lg transition-all"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    )}
+                    <div className="flex items-center gap-2 w-44">
+                      <div className="relative flex-1">
+                        <input
+                          type="number"
+                          placeholder="0"
+                          min="0"
+                          step="1000"
+                          value={shareInfo.soTien === 0 ? '' : shareInfo.soTien}
+                          onChange={(e) => handleChangeShareAmount(tv.id, Number(e.target.value))}
+                          disabled={!isSelected}
+                          className={`w-full bg-slate-950/80 border rounded-xl pl-3 pr-7 py-1.5 text-xs text-right font-mono focus:outline-none transition-colors ${
+                            isSelected
+                              ? 'border-slate-700 text-fuchsia-300 focus:border-fuchsia-500'
+                              : 'border-slate-850 text-slate-600 cursor-not-allowed'
+                          }`}
+                        />
+                        <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-slate-500 font-mono pointer-events-none">
+                          đ
+                        </span>
+                      </div>
+                    </div>
                   </div>
-                ))}
-
-                <button
-                  type="button"
-                  onClick={handleAddNguoiTra}
-                  disabled={nguoiTraTien.length >= thanhViens.length}
-                  className="w-full py-2.5 border border-dashed border-slate-800 hover:border-pink-500/50 hover:bg-pink-950/10 rounded-xl flex items-center justify-center gap-1.5 text-xs font-semibold text-slate-400 hover:text-pink-400 transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-                >
-                  <Plus className="w-4 h-4" />
-                  Thêm người trả tiền
-                </button>
-              </div>
-            )}
+                );
+              })}
+            </div>
           </div>
 
-          {/* Footer nút */}
-          <div className="flex gap-3 justify-end pt-4 border-t border-slate-800">
-            {chiPhi && chiPhi.id && onDelete && (
+          {/* Người chi trả tiền */}
+          <div className="space-y-3 pt-2 border-t border-slate-800">
+            <div className="flex items-center justify-between">
+              <div>
+                <label className="text-sm font-semibold text-slate-300">
+                  Người chi trả tiền
+                </label>
+                <span className="block text-[11px] text-slate-500">
+                  Ai đứng ra thanh toán tổng số tiền trên
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={handleAddNguoiTra}
+                className="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1 transition-colors cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Thêm người trả
+              </button>
+            </div>
+
+            <div className="space-y-2.5">
+              {nguoiTraTien.map((item, idx) => (
+                <div key={idx} className="flex items-center gap-2">
+                  <select
+                    value={item.thanhVienId}
+                    onChange={(e) => handleChangeNguoiTraId(idx, Number(e.target.value))}
+                    className="flex-1 bg-slate-950/60 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500 cursor-pointer"
+                  >
+                    {thanhViens.map((tv) => (
+                      <option key={tv.id} value={tv.id} className="bg-slate-900 text-white">
+                        {tv.ten} (Người trả)
+                      </option>
+                    ))}
+                  </select>
+
+                  <div className="relative flex-1">
+                    <input
+                      type="number"
+                      value={item.soTienDaTra === 0 ? '' : item.soTienDaTra}
+                      onChange={(e) => handleChangeNguoiTraTien(idx, Number(e.target.value))}
+                      placeholder="0"
+                      min="0"
+                      step="1000"
+                      className="w-full bg-slate-950/60 border border-slate-800 rounded-xl pl-3.5 pr-8 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500 font-mono"
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-500 font-mono">
+                      đ
+                    </span>
+                  </div>
+
+                  {nguoiTraTien.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveNguoiTra(idx)}
+                      className="p-2.5 text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 rounded-xl transition-colors cursor-pointer"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Footer Actions */}
+          <div className="flex items-center justify-between pt-4 border-t border-slate-800">
+            {chiPhi?.id && onDelete ? (
               <button
                 type="button"
                 onClick={() => onDelete(chiPhi.id!)}
-                className="mr-auto px-5 py-2.5 bg-rose-950/20 border border-rose-900/30 hover:bg-rose-900/20 text-sm font-semibold text-rose-350 rounded-xl transition-all cursor-pointer flex items-center gap-1.5"
+                className="px-4 py-2.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 text-sm font-semibold rounded-xl transition-all cursor-pointer flex items-center gap-2"
               >
                 <Trash2 className="w-4 h-4" />
-                Xóa chi phí
+                Xóa chi phí này
               </button>
-            )}
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-5 py-2.5 border border-slate-800 hover:border-slate-700 hover:bg-slate-800 text-sm font-semibold text-slate-300 rounded-xl transition-all cursor-pointer"
-            >
-              Hủy
-            </button>
-            <button
-              type="submit"
-              disabled={saving || tongTien <= 0}
-              className="gradient-btn px-5 py-2.5 text-white font-semibold rounded-xl text-sm flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-            >
-              {saving ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Đang lưu...
-                </>
-              ) : (
-                <>
-                  <Save className="w-4 h-4" />
-                  Lưu chi phí
-                </>
-              )}
-            </button>
+            ) : <div />}
+
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2.5 bg-slate-800 hover:bg-slate-750 text-slate-300 text-sm font-semibold rounded-xl transition-all cursor-pointer"
+              >
+                Hủy
+              </button>
+              <button
+                type="submit"
+                disabled={saving}
+                className="gradient-btn px-5 py-2.5 text-white text-sm font-semibold rounded-xl transition-all cursor-pointer flex items-center gap-2 disabled:opacity-50"
+              >
+                {saving ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Đang lưu...
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-4 h-4" />
+                    Lưu thông tin
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </form>
       </div>

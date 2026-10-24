@@ -18,12 +18,18 @@ export interface NguoiTraTien {
   soTienDaTra: number;
 }
 
+export interface NguoiAnChiTiet {
+  thanhVienId: number;
+  soTien: number;
+}
+
 export interface BuaToi {
   id?: number;
   thuTrongTuan: string;
   tongTien: number;
   ngayAn: string;
   nguoiAnIds: number[];
+  chiTietNguoiAn?: NguoiAnChiTiet[];
   nguoiTraTien: NguoiTraTien[];
   loai?: string;
   moTa?: string;
@@ -104,6 +110,7 @@ export const addChiPhiKhac = async (payload: {
   tongTien: number;
   ngayChi: string;
   nguoiChiaIds: number[];
+  chiTietNguoiChia?: NguoiAnChiTiet[];
   nguoiTraTien: NguoiTraTien[];
 }): Promise<BuaToi> => {
   const response = await api.post('/them-chi-phi-khac', payload);
