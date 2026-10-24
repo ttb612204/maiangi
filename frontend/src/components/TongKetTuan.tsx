@@ -49,18 +49,18 @@ export const TongKetTuan: React.FC<TongKetTuanProps> = React.memo(({
             <TrendingUp className="w-6 h-6" />
           </div>
           <div>
-            <h2 className="text-xl font-bold text-white tracking-wide">Tổng Kết Tuần</h2>
-            <p className="text-xs text-slate-400">Xem nhanh số dư & chi tiết nợ</p>
+            <h2 className="text-xl font-bold text-white tracking-wide">Tổng Kết Số Dư</h2>
+            <p className="text-xs text-slate-400">Xem nhanh số dư & cấn trừ tất cả các khoản</p>
           </div>
         </div>
         <button
           onClick={onRefresh}
           disabled={loading}
           className="gradient-btn p-2 rounded-xl text-white disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer flex items-center gap-1.5 px-3 py-2 text-xs font-semibold"
-          title="Tổng kết tuần"
+          title="Làm mới tổng kết"
         >
           <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          Tổng kết tuần
+          Tổng kết lại
         </button>
       </div>
 
@@ -72,7 +72,7 @@ export const TongKetTuan: React.FC<TongKetTuanProps> = React.memo(({
       ) : !tongKet || tongKet.chiTietTongKet.length === 0 ? (
         <div className="flex-1 flex flex-col items-center justify-center py-12 text-slate-500 text-center text-sm">
           <HelpCircle className="w-12 h-12 text-slate-700 mb-3" />
-          Chưa có dữ liệu tổng kết. Hãy bấm nút "Tổng kết tuần" hoặc nhập dữ liệu bữa ăn.
+          Chưa có dữ liệu tổng kết. Hãy bấm nút "Tổng kết lại" hoặc nhập dữ liệu bữa ăn/chi phí.
         </div>
       ) : (
         <div className="space-y-6 flex-1 overflow-y-auto pr-1">
@@ -80,7 +80,7 @@ export const TongKetTuan: React.FC<TongKetTuanProps> = React.memo(({
           <div className="space-y-4">
             <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
               <Landmark className="w-4 h-4 text-indigo-400" />
-              Chi tiết số dư tuần này ({danhSachThanhVienSort.length})
+              Chi tiết số dư ({danhSachThanhVienSort.length})
             </h3>
             
             {danhSachThanhVienSort.length === 0 ? (

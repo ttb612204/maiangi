@@ -9,7 +9,7 @@ interface DayConfig {
 }
 
 interface FormChiPhiKhacProps {
-  daysOfWeek: DayConfig[];
+  daysOfWeek?: DayConfig[];
   chiPhi?: BuaToi;
   thanhViens: ThanhVien[];
   onSave: (payload: {
@@ -23,6 +23,34 @@ interface FormChiPhiKhacProps {
   onDelete?: (id: number) => Promise<void>;
   onClose: () => void;
 }
+
+const getTodayDateString = () => {
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const getDayOfWeekVietnamese = (dateStr: string) => {
+  if (!dateStr) return 'Thứ 2';
+  try {
+    const parts = dateStr.split('T')[0].split('-');
+    if (parts.length === 3) {
+      const year = parseInt(parts[0], 10);
+      const month = parseInt(parts[1], 10) - 1;
+      const date = parseInt(parts[2], 10);
+      const d = new Date(year, month, date);
+      const days = ['Chủ nhật', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7'];
+      return days[d.getDay()] || 'Thứ 2';
+    }
+    const d = new Date(dateStr);
+    const days = ['Chủ nhật', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7'];
+    return days[d.getDay()] || 'Thứ 2';
+  } catch {
+    return 'Thứ 2';
+  }
+};
 
 export const FormChiPhiKhac: React.FC<FormChiPhiKhacProps> = ({
   daysOfWeek,
@@ -53,8 +81,10 @@ export const FormChiPhiKhac: React.FC<FormChiPhiKhacProps> = ({
       setMoTa('');
       if (chiPhi && chiPhi.ngayAn) {
         setSelectedDateStr(chiPhi.ngayAn.split('T')[0]);
-      } else if (daysOfWeek.length > 0) {
+      } else if (daysOfWeek && daysOfWeek.length > 0) {
         setSelectedDateStr(daysOfWeek[0].dateString);
+      } else {
+        setSelectedDateStr(getTodayDateString());
       }
       // Mặc định chọn tất cả mọi người chia sẻ
       setNguoiChiaIds(thanhViens.map((tv) => tv.id));
@@ -199,12 +229,18 @@ export const FormChiPhiKhac: React.FC<FormChiPhiKhacProps> = ({
 
           {/* Ngày chi tiêu */}
           <div className="space-y-2">
-            <label className="block text-sm font-semibold text-slate-400">Ngày chi tiêu</label>
-            <div className="bg-slate-950/60 border border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-300 font-medium">
-              {(() => {
-                const matched = daysOfWeek.find((d) => d.dateString === selectedDateStr);
-                return matched ? `${matched.thu} (${matched.displayDate})` : selectedDateStr;
-              })()}
+            <label className="block text-sm font-semibold text-slate-300">Ngày chi tiêu</label>
+            <div className="flex items-center gap-3">
+              <input
+                type="date"
+                value={selectedDateStr}
+                onChange={(e) => setSelectedDateStr(e.target.value)}
+                className="bg-slate-950/60 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500 font-mono cursor-pointer"
+                required
+              />
+              <span className="text-sm font-bold text-fuchsia-400 bg-fuchsia-950/50 px-3 py-2 rounded-xl border border-fuchsia-500/20">
+                {getDayOfWeekVietnamese(selectedDateStr)}
+              </span>
             </div>
           </div>
 

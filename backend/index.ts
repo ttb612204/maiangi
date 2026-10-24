@@ -426,7 +426,11 @@ app.delete('/api/xoa-thanh-vien/:id', async (req, res) => {
 app.post('/api/them-bua-toi', async (req, res) => {
   const client = await pool.connect();
   try {
-    const { thuTrongTuan, tongTien, ngayAn, nguoiAnIds, nguoiTraTien } = req.body;
+    const { id, tongTien, ngayAn, nguoiAnIds, nguoiTraTien } = req.body;
+    let thuTrongTuan = req.body.thuTrongTuan;
+    if (!thuTrongTuan && ngayAn) {
+      thuTrongTuan = getThuVietnamese(ngayAn);
+    }
 
     // Validation cơ bản
     if (!thuTrongTuan || typeof tongTien !== 'number' || tongTien < 0 || !ngayAn) {
@@ -444,12 +448,15 @@ app.post('/api/them-bua-toi', async (req, res) => {
     // So khớp ngày ăn bằng Date
     const dateObj = new Date(ngayAn);
 
-    // Kiểm tra xem đã có bữa tối vào ngày này chưa
-    const existing = await client.query('SELECT id FROM bua_toi WHERE ngay_an = $1', [dateObj]);
-    if (existing.rows.length > 0) {
-      const oldId = existing.rows[0].id;
-      // Xóa bữa ăn cũ (ON DELETE CASCADE sẽ tự động xóa bản ghi ở bảng nguoi_an và nguoi_tra_tien)
-      await client.query('DELETE FROM bua_toi WHERE id = $1', [oldId]);
+    if (id) {
+      await client.query('DELETE FROM bua_toi WHERE id = $1', [Number(id)]);
+    } else {
+      // Kiểm tra xem đã có bữa tối vào ngày này chưa
+      const existing = await client.query('SELECT id FROM bua_toi WHERE ngay_an = $1', [dateObj]);
+      if (existing.rows.length > 0) {
+        const oldId = existing.rows[0].id;
+        await client.query('DELETE FROM bua_toi WHERE id = $1', [oldId]);
+      }
     }
 
     // Thêm bữa tối mới
@@ -576,7 +583,7 @@ app.post('/api/them-chi-phi-khac', async (req, res) => {
   }
 });
 
-// 6. Lấy danh sách bữa tối theo tuần (Gồm cả Bữa Tối và Chi Phí Khác từ 2 bảng khác nhau)
+// 6. Lấy danh sách bữa tối (Gồm cả Bữa Tối và Chi Phí Khác từ 2 bảng khác nhau)
 app.get('/api/danh-sach-bua-toi', async (req, res) => {
   try {
     const { ngayDauTuan } = req.query;
@@ -584,7 +591,7 @@ app.get('/api/danh-sach-bua-toi', async (req, res) => {
     let whereClauseExpense = '';
     let params: any[] = [];
 
-    if (ngayDauTuan && typeof ngayDauTuan === 'string') {
+    if (ngayDauTuan && typeof ngayDauTuan === 'string' && ngayDauTuan !== 'all' && ngayDauTuan !== '1970-01-01') {
       const startDate = new Date(ngayDauTuan);
       const endDate = new Date(startDate);
       endDate.setDate(startDate.getDate() + 6);
@@ -662,7 +669,8 @@ app.get('/api/danh-sach-bua-toi', async (req, res) => {
       };
     });
 
-    const merged = [...mappedDinners, ...mappedExpenses].sort((a, b) => new Date(a.ngayAn).getTime() - new Date(b.ngayAn).getTime());
+    // Sắp xếp ngày mới nhất lên đầu
+    const merged = [...mappedDinners, ...mappedExpenses].sort((a, b) => new Date(b.ngayAn).getTime() - new Date(a.ngayAn).getTime());
     return res.json(merged);
   } catch (error: any) {
     logErrorToFile(error);
@@ -671,34 +679,40 @@ app.get('/api/danh-sach-bua-toi', async (req, res) => {
   }
 });
 
-// 7. Tổng kết tuần và tối ưu hóa chuyển khoản
-app.get('/api/tong-ket-tuan', async (req, res) => {
+// 7. Tổng kết (Tuần hoặc Toàn bộ) và tối ưu hóa chuyển khoản
+app.get(['/api/tong-ket-tuan', '/api/tong-ket'], async (req, res) => {
   try {
     const { ngayDauTuan } = req.query;
-    if (!ngayDauTuan || typeof ngayDauTuan !== 'string') {
-      return res.status(400).json({ error: 'Thiếu tham số ngayDauTuan.' });
-    }
+    const isAllTime = !ngayDauTuan || ngayDauTuan === 'all' || ngayDauTuan === '1970-01-01';
 
     // 1. Lấy tất cả thành viên
     const membersRes = await pool.query('SELECT id, ten FROM thanh_vien ORDER BY id ASC');
     const tatCaThanhVien = membersRes.rows;
 
-    // 2. Lấy tất cả bữa ăn/chi phí trong tuần
-    const startDate = new Date(ngayDauTuan);
-    const endDate = new Date(startDate);
-    endDate.setDate(startDate.getDate() + 6);
+    let whereClauseDinner = '';
+    let whereClauseExpense = '';
+    let queryParams: any[] = [];
+
+    if (!isAllTime && typeof ngayDauTuan === 'string') {
+      const startDate = new Date(ngayDauTuan);
+      const endDate = new Date(startDate);
+      endDate.setDate(startDate.getDate() + 6);
+      whereClauseDinner = 'WHERE b.ngay_an >= $1 AND b.ngay_an <= $2';
+      whereClauseExpense = 'WHERE c.ngay_chi >= $1 AND c.ngay_chi <= $2';
+      queryParams = [startDate, endDate];
+    }
 
     const dinnersRes = await pool.query(`
       SELECT b.id, b.thu_trong_tuan as "thuTrongTuan", b.tong_tien as "tongTien", b.ngay_an as "ngayAn"
       FROM bua_toi b
-      WHERE b.ngay_an >= $1 AND b.ngay_an <= $2
-    `, [startDate, endDate]);
+      ${whereClauseDinner}
+    `, queryParams);
 
     const expensesRes = await pool.query(`
       SELECT c.id, c.thu_trong_tuan as "thuTrongTuan", c.tong_tien as "tongTien", c.ngay_chi as "ngayAn", c.mo_ta as "moTa"
       FROM chi_phi_khac c
-      WHERE c.ngay_chi >= $1 AND c.ngay_chi <= $2
-    `, [startDate, endDate]);
+      ${whereClauseExpense}
+    `, queryParams);
 
     // 3. Lấy tất cả quan hệ người ăn và người trả
     const eatersRes = await pool.query('SELECT bua_toi_id, thanh_vien_id FROM nguoi_an');
@@ -795,18 +809,33 @@ app.get('/api/tong-ket-tuan', async (req, res) => {
       };
     });
 
-    // Lấy trạng thái đã trả tiền từ DB cho tuần này
-    const statusRes = await pool.query(
-      'SELECT tu_thanh_vien_id, den_thanh_vien_id, da_tra, COALESCE(so_tien, 0) as so_tien FROM trang_thai_chuyen_khoan WHERE ngay_dau_tuan = $1',
-      [ngayDauTuan]
-    );
+    // Lấy trạng thái đã trả tiền từ DB
     const paidMap = new Map<string, { daTra: boolean; soTien: number }>();
-    statusRes.rows.forEach((r) => {
-      paidMap.set(`${r.tu_thanh_vien_id}-${r.den_thanh_vien_id}`, {
-        daTra: !!r.da_tra,
-        soTien: Number(r.so_tien || 0),
+    if (isAllTime) {
+      const statusRes = await pool.query(
+        `SELECT tu_thanh_vien_id, den_thanh_vien_id, bool_or(da_tra) as da_tra, SUM(COALESCE(so_tien, 0)) as so_tien 
+         FROM trang_thai_chuyen_khoan 
+         WHERE da_tra = true
+         GROUP BY tu_thanh_vien_id, den_thanh_vien_id`
+      );
+      statusRes.rows.forEach((r) => {
+        paidMap.set(`${r.tu_thanh_vien_id}-${r.den_thanh_vien_id}`, {
+          daTra: !!r.da_tra,
+          soTien: Number(r.so_tien || 0),
+        });
       });
-    });
+    } else {
+      const statusRes = await pool.query(
+        'SELECT tu_thanh_vien_id, den_thanh_vien_id, da_tra, COALESCE(so_tien, 0) as so_tien FROM trang_thai_chuyen_khoan WHERE ngay_dau_tuan = $1',
+        [ngayDauTuan]
+      );
+      statusRes.rows.forEach((r) => {
+        paidMap.set(`${r.tu_thanh_vien_id}-${r.den_thanh_vien_id}`, {
+          daTra: !!r.da_tra,
+          soTien: Number(r.so_tien || 0),
+        });
+      });
+    }
 
     // Tính toán đối trừ chuyển khoản trực tiếp song phương có xét đến các khoản đã thanh toán trước
     const danhSachChuyenKhoan = tinhChuyenKhoanSongPhuong(tatCaThanhVien, tatCaBuaToi, paidMap);
@@ -839,17 +868,33 @@ app.delete('/api/xoa-bua-toi/:id', async (req, res) => {
 app.post('/api/toggle-chuyen-khoan', async (req, res) => {
   try {
     const { ngayDauTuan, tuThanhVienId, denThanhVienId, daTra, soTien } = req.body;
-    if (!ngayDauTuan || !tuThanhVienId || !denThanhVienId) {
+    if (!tuThanhVienId || !denThanhVienId) {
       return res.status(400).json({ error: 'Thiếu thông tin cập nhật.' });
     }
 
-    // Upsert trạng thái đã trả tiền
-    await pool.query(`
-      INSERT INTO trang_thai_chuyen_khoan (ngay_dau_tuan, tu_thanh_vien_id, den_thanh_vien_id, da_tra, so_tien)
-      VALUES ($1, $2, $3, $4, $5)
-      ON CONFLICT (ngay_dau_tuan, tu_thanh_vien_id, den_thanh_vien_id)
-      DO UPDATE SET da_tra = EXCLUDED.da_tra, so_tien = EXCLUDED.so_tien
-    `, [ngayDauTuan, Number(tuThanhVienId), Number(denThanhVienId), !!daTra, Number(soTien || 0)]);
+    const isAllTime = !ngayDauTuan || ngayDauTuan === 'all' || ngayDauTuan === '1970-01-01';
+
+    if (isAllTime) {
+      // Xóa các bản ghi cũ của cặp này để quản lý trạng thái gộp toàn bộ
+      await pool.query(
+        'DELETE FROM trang_thai_chuyen_khoan WHERE tu_thanh_vien_id = $1 AND den_thanh_vien_id = $2',
+        [Number(tuThanhVienId), Number(denThanhVienId)]
+      );
+      if (daTra) {
+        await pool.query(`
+          INSERT INTO trang_thai_chuyen_khoan (ngay_dau_tuan, tu_thanh_vien_id, den_thanh_vien_id, da_tra, so_tien)
+          VALUES ('1970-01-01', $1, $2, true, $3)
+        `, [Number(tuThanhVienId), Number(denThanhVienId), Number(soTien || 0)]);
+      }
+    } else {
+      // Upsert trạng thái đã trả tiền theo tuần
+      await pool.query(`
+        INSERT INTO trang_thai_chuyen_khoan (ngay_dau_tuan, tu_thanh_vien_id, den_thanh_vien_id, da_tra, so_tien)
+        VALUES ($1, $2, $3, $4, $5)
+        ON CONFLICT (ngay_dau_tuan, tu_thanh_vien_id, den_thanh_vien_id)
+        DO UPDATE SET da_tra = EXCLUDED.da_tra, so_tien = EXCLUDED.so_tien
+      `, [ngayDauTuan, Number(tuThanhVienId), Number(denThanhVienId), !!daTra, Number(soTien || 0)]);
+    }
 
     return res.json({ message: 'Cập nhật trạng thái chuyển khoản thành công.' });
   } catch (error: any) {

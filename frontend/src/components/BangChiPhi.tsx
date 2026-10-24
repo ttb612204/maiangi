@@ -1,0 +1,408 @@
+import React, { useState, useMemo } from 'react';
+import { 
+  Receipt, 
+  Utensils, 
+  Edit3, 
+  Trash2, 
+  Search, 
+  ChevronLeft, 
+  ChevronRight, 
+  Sparkles
+} from 'lucide-react';
+import { BuaToi, ThanhVien } from '../services/api';
+
+interface BangChiPhiProps {
+  buaTois: BuaToi[];
+  thanhViens: ThanhVien[];
+  onEditItem: (item: BuaToi) => void;
+  onDeleteItem: (id: number) => void;
+  onOpenAddBuaToi: () => void;
+  onOpenAddChiPhi: () => void;
+}
+
+export const BangChiPhi: React.FC<BangChiPhiProps> = React.memo(({
+  buaTois,
+  thanhViens,
+  onEditItem,
+  onDeleteItem,
+  onOpenAddBuaToi,
+  onOpenAddChiPhi,
+}) => {
+  const [filterType, setFilterType] = useState<'all' | 'bua_toi' | 'chi_phi_khac'>('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 10;
+
+  const formatVND = (amount: number) => {
+    return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount);
+  };
+
+  const formatDateDisplay = (dateString: string) => {
+    try {
+      const parts = dateString.split('T')[0].split('-');
+      if (parts.length === 3) {
+        return `${parts[2]}/${parts[1]}/${parts[0]}`;
+      }
+      const d = new Date(dateString);
+      return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+    } catch {
+      return dateString;
+    }
+  };
+
+  const getTenThanhVien = (id: number) => {
+    return thanhViens.find((tv) => tv.id === id)?.ten || `TV #${id}`;
+  };
+
+  // Lọc và tìm kiếm
+  const filteredItems = useMemo(() => {
+    return buaTois.filter((item) => {
+      // Lọc theo loại
+      const isExpense = item.loai === 'chi_phi_khac';
+      if (filterType === 'bua_toi' && isExpense) return false;
+      if (filterType === 'chi_phi_khac' && !isExpense) return false;
+
+      // Tìm kiếm
+      if (searchQuery.trim()) {
+        const query = searchQuery.toLowerCase();
+        const dateStr = formatDateDisplay(item.ngayAn);
+        const thuStr = (item.thuTrongTuan || '').toLowerCase();
+        const moTaStr = (item.moTa || '').toLowerCase();
+        const loaiStr = isExpense ? 'chi phí khác' : 'bữa tối';
+
+        const matchEater = item.nguoiAnIds?.some((id) =>
+          getTenThanhVien(id).toLowerCase().includes(query)
+        );
+        const matchPayer = item.nguoiTraTien?.some((p) =>
+          getTenThanhVien(p.thanhVienId).toLowerCase().includes(query)
+        );
+
+        return (
+          dateStr.includes(query) ||
+          thuStr.includes(query) ||
+          moTaStr.includes(query) ||
+          loaiStr.includes(query) ||
+          matchEater ||
+          matchPayer
+        );
+      }
+
+      return true;
+    });
+  }, [buaTois, filterType, searchQuery, thanhViens]);
+
+  // Phân trang
+  const totalPages = Math.max(1, Math.ceil(filteredItems.length / ITEMS_PER_PAGE));
+  const currentItems = useMemo(() => {
+    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+    return filteredItems.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+  }, [filteredItems, currentPage]);
+
+  const handlePageChange = (newPage: number) => {
+    if (newPage >= 1 && newPage <= totalPages) {
+      setCurrentPage(newPage);
+    }
+  };
+
+  return (
+    <div className="glass-panel rounded-2xl p-6 shadow-xl border border-slate-800 flex flex-col h-full">
+      {/* Top Header */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 rounded-xl bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+            <Receipt className="w-6 h-6" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-xl font-bold text-white tracking-wide">
+                Bảng Chi Phí & Bữa Ăn
+              </h2>
+              <span className="text-xs bg-slate-800 text-slate-300 font-mono px-2 py-0.5 rounded-full border border-slate-700">
+                {buaTois.length} khoản
+              </span>
+            </div>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Toàn bộ danh sách chi phí phân trang (tối đa 10 dòng / trang)
+            </p>
+          </div>
+        </div>
+
+        {/* Buttons thêm mới */}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onOpenAddBuaToi}
+            className="gradient-btn px-3.5 py-2 rounded-xl text-white text-xs font-semibold flex items-center gap-1.5 shadow-md hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer"
+          >
+            <Utensils className="w-3.5 h-3.5" />
+            + Nhập bữa tối
+          </button>
+          <button
+            onClick={onOpenAddChiPhi}
+            className="px-3.5 py-2 rounded-xl bg-fuchsia-600/20 border border-fuchsia-500/30 text-fuchsia-300 hover:bg-fuchsia-600/30 text-xs font-semibold flex items-center gap-1.5 shadow-md hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer"
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            + Thêm chi phí khác
+          </button>
+        </div>
+      </div>
+
+      {/* Bộ lọc loại & Ô tìm kiếm */}
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 mb-5">
+        <div className="flex items-center bg-slate-900/60 p-1 rounded-xl border border-slate-800">
+          <button
+            onClick={() => { setFilterType('all'); setCurrentPage(1); }}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${
+              filterType === 'all'
+                ? 'bg-indigo-600 text-white shadow-sm'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            Tất cả ({buaTois.length})
+          </button>
+          <button
+            onClick={() => { setFilterType('bua_toi'); setCurrentPage(1); }}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${
+              filterType === 'bua_toi'
+                ? 'bg-indigo-600 text-white shadow-sm'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            Bữa tối ({buaTois.filter(b => b.loai !== 'chi_phi_khac').length})
+          </button>
+          <button
+            onClick={() => { setFilterType('chi_phi_khac'); setCurrentPage(1); }}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${
+              filterType === 'chi_phi_khac'
+                ? 'bg-indigo-600 text-white shadow-sm'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            Chi phí khác ({buaTois.filter(b => b.loai === 'chi_phi_khac').length})
+          </button>
+        </div>
+
+        <div className="relative min-w-[220px]">
+          <Search className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
+            placeholder="Tìm ngày, tên, nội dung..."
+            className="w-full bg-slate-900/80 border border-slate-800 rounded-xl pl-9 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => { setSearchQuery(''); setCurrentPage(1); }}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 text-xs"
+            >
+              ×
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Bảng Dữ Liệu (Table View) */}
+      <div className="flex-1 overflow-x-auto rounded-xl border border-slate-800 bg-slate-950/40">
+        <table className="w-full text-left border-collapse min-w-[700px]">
+          <thead>
+            <tr className="border-b border-slate-800 bg-slate-900/70 text-slate-400 text-[11px] uppercase tracking-wider font-semibold">
+              <th className="py-3 px-4 w-36">Ngày & Thứ</th>
+              <th className="py-3 px-4 w-44">Khoản Chi</th>
+              <th className="py-3 px-4 w-32">Tổng Tiền</th>
+              <th className="py-3 px-4">Người Ăn / Chia Sẻ</th>
+              <th className="py-3 px-4">Người Đã Chi Trả</th>
+              <th className="py-3 px-3 text-center w-24">Thao Tác</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-800/60 text-xs">
+            {currentItems.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="py-12 text-center text-slate-500">
+                  <Receipt className="w-10 h-10 mx-auto text-slate-700 mb-2 opacity-60" />
+                  Không tìm thấy khoản chi nào.
+                </td>
+              </tr>
+            ) : (
+              currentItems.map((item) => {
+                const isExpense = item.loai === 'chi_phi_khac';
+
+                return (
+                  <tr
+                    key={`${isExpense ? 'cp' : 'bt'}-${item.id}`}
+                    className="hover:bg-slate-900/40 transition-colors group"
+                  >
+                    {/* Ngày & Thứ */}
+                    <td className="py-3 px-4 whitespace-nowrap">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-bold text-slate-200">
+                          {item.thuTrongTuan || 'Thứ ?'}
+                        </span>
+                        <span className="text-[11px] text-slate-500 font-mono">
+                          {formatDateDisplay(item.ngayAn)}
+                        </span>
+                      </div>
+                    </td>
+
+                    {/* Khoản Chi / Loại */}
+                    <td className="py-3 px-4">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`px-2 py-0.5 rounded text-[10px] font-semibold tracking-wide shrink-0 ${
+                            isExpense
+                              ? 'bg-fuchsia-950/60 text-fuchsia-300 border border-fuchsia-500/20'
+                              : 'bg-indigo-950/60 text-indigo-300 border border-indigo-500/20'
+                          }`}
+                        >
+                          {isExpense ? 'Chi phí khác' : 'Bữa tối'}
+                        </span>
+                        {isExpense && item.moTa && (
+                          <span className="text-slate-300 font-medium truncate max-w-[140px]" title={item.moTa}>
+                            {item.moTa}
+                          </span>
+                        )}
+                      </div>
+                    </td>
+
+                    {/* Tổng Tiền */}
+                    <td className="py-3 px-4 whitespace-nowrap">
+                      <span className="font-bold font-mono text-emerald-400 text-sm">
+                        {formatVND(item.tongTien)}
+                      </span>
+                    </td>
+
+                    {/* Người Ăn / Chia Sẻ */}
+                    <td className="py-3 px-4">
+                      <div className="flex flex-wrap gap-1 max-w-xs">
+                        {item.nguoiAnIds && item.nguoiAnIds.length > 0 ? (
+                          item.nguoiAnIds.map((id) => (
+                            <span
+                              key={id}
+                              className="inline-block bg-slate-900 text-slate-300 border border-slate-800 text-[10px] px-1.5 py-0.5 rounded"
+                            >
+                              {getTenThanhVien(id)}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="text-slate-600 italic text-[11px]">Chưa chọn</span>
+                        )}
+                      </div>
+                    </td>
+
+                    {/* Người Đã Chi Trả */}
+                    <td className="py-3 px-4">
+                      <div className="flex flex-wrap gap-1 max-w-xs">
+                        {item.nguoiTraTien && item.nguoiTraTien.length > 0 ? (
+                          item.nguoiTraTien
+                            .filter((p) => p.soTienDaTra > 0)
+                            .map((p) => (
+                              <span
+                                key={p.thanhVienId}
+                                className="inline-flex items-center gap-1 bg-emerald-950/40 text-emerald-300 border border-emerald-500/20 text-[10px] px-1.5 py-0.5 rounded"
+                              >
+                                <span>{getTenThanhVien(p.thanhVienId)}:</span>
+                                <span className="font-mono font-bold">{formatVND(p.soTienDaTra)}</span>
+                              </span>
+                            ))
+                        ) : (
+                          <span className="text-slate-600 italic text-[11px]">Chưa nhập</span>
+                        )}
+                      </div>
+                    </td>
+
+                    {/* Thao Tác */}
+                    <td className="py-3 px-3 text-center whitespace-nowrap">
+                      <div className="flex items-center justify-center gap-1 opacity-80 group-hover:opacity-100 transition-opacity">
+                        <button
+                          onClick={() => onEditItem(item)}
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-400 hover:bg-indigo-500/10 transition-colors"
+                          title="Chỉnh sửa"
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => item.id && onDeleteItem(item.id)}
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                          title="Xóa"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Pagination Footer (10 items / page) */}
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 mt-4 pt-3 border-t border-slate-800 text-xs text-slate-400">
+        <div>
+          {filteredItems.length > 0 ? (
+            <span>
+              Hiển thị <span className="font-semibold text-slate-200">{(currentPage - 1) * ITEMS_PER_PAGE + 1}</span> -{' '}
+              <span className="font-semibold text-slate-200">
+                {Math.min(currentPage * ITEMS_PER_PAGE, filteredItems.length)}
+              </span>{' '}
+              trong tổng số <span className="font-semibold text-slate-200">{filteredItems.length}</span> khoản
+            </span>
+          ) : (
+            <span>0 khoản chi</span>
+          )}
+        </div>
+
+        {totalPages > 1 && (
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => handlePageChange(currentPage - 1)}
+              disabled={currentPage === 1}
+              className="p-1.5 rounded-lg border border-slate-800 text-slate-400 hover:text-white hover:bg-slate-800 disabled:opacity-30 disabled:pointer-events-none transition-colors"
+              title="Trang trước"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+
+            {Array.from({ length: totalPages }, (_, i) => i + 1)
+              .filter((page) => {
+                return (
+                  page === 1 ||
+                  page === totalPages ||
+                  Math.abs(page - currentPage) <= 1
+                );
+              })
+              .map((page, idx, arr) => {
+                const prev = arr[idx - 1];
+                return (
+                  <React.Fragment key={page}>
+                    {prev && page - prev > 1 && (
+                      <span className="px-1 text-slate-600">...</span>
+                    )}
+                    <button
+                      onClick={() => handlePageChange(page)}
+                      className={`min-w-[28px] h-7 px-2 rounded-lg text-xs font-semibold transition-all ${
+                        currentPage === page
+                          ? 'bg-indigo-600 text-white shadow-sm'
+                          : 'border border-slate-800 text-slate-400 hover:text-white hover:bg-slate-800'
+                      }`}
+                    >
+                      {page}
+                    </button>
+                  </React.Fragment>
+                );
+              })}
+
+            <button
+              onClick={() => handlePageChange(currentPage + 1)}
+              disabled={currentPage === totalPages}
+              className="p-1.5 rounded-lg border border-slate-800 text-slate-400 hover:text-white hover:bg-slate-800 disabled:opacity-30 disabled:pointer-events-none transition-colors"
+              title="Trang sau"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+});
