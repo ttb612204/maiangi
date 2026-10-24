@@ -4,10 +4,10 @@ import {
   Utensils, 
   Edit3, 
   Trash2, 
-  Search, 
   ChevronLeft, 
   ChevronRight, 
-  Sparkles
+  Sparkles,
+  Calendar
 } from 'lucide-react';
 import { BuaToi, ThanhVien } from '../services/api';
 
@@ -18,6 +18,7 @@ interface BangChiPhiProps {
   onDeleteItem: (id: number) => void;
   onOpenAddBuaToi: () => void;
   onOpenAddChiPhi: () => void;
+  onOpenClearModal: () => void;
 }
 
 export const BangChiPhi: React.FC<BangChiPhiProps> = React.memo(({
@@ -27,9 +28,10 @@ export const BangChiPhi: React.FC<BangChiPhiProps> = React.memo(({
   onDeleteItem,
   onOpenAddBuaToi,
   onOpenAddChiPhi,
+  onOpenClearModal,
 }) => {
   const [filterType, setFilterType] = useState<'all' | 'bua_toi' | 'chi_phi_khac'>('all');
-  const [searchQuery, setSearchQuery] = useState('');
+  const [filterDate, setFilterDate] = useState<string>('');
   const [currentPage, setCurrentPage] = useState(1);
   const ITEMS_PER_PAGE = 10;
 
@@ -54,7 +56,7 @@ export const BangChiPhi: React.FC<BangChiPhiProps> = React.memo(({
     return thanhViens.find((tv) => tv.id === id)?.ten || `TV #${id}`;
   };
 
-  // Lọc và tìm kiếm
+  // Lọc theo loại và chọn ngày
   const filteredItems = useMemo(() => {
     return buaTois.filter((item) => {
       // Lọc theo loại
@@ -62,34 +64,15 @@ export const BangChiPhi: React.FC<BangChiPhiProps> = React.memo(({
       if (filterType === 'bua_toi' && isExpense) return false;
       if (filterType === 'chi_phi_khac' && !isExpense) return false;
 
-      // Tìm kiếm
-      if (searchQuery.trim()) {
-        const query = searchQuery.toLowerCase();
-        const dateStr = formatDateDisplay(item.ngayAn);
-        const thuStr = (item.thuTrongTuan || '').toLowerCase();
-        const moTaStr = (item.moTa || '').toLowerCase();
-        const loaiStr = isExpense ? 'chi phí khác' : 'bữa tối';
-
-        const matchEater = item.nguoiAnIds?.some((id) =>
-          getTenThanhVien(id).toLowerCase().includes(query)
-        );
-        const matchPayer = item.nguoiTraTien?.some((p) =>
-          getTenThanhVien(p.thanhVienId).toLowerCase().includes(query)
-        );
-
-        return (
-          dateStr.includes(query) ||
-          thuStr.includes(query) ||
-          moTaStr.includes(query) ||
-          loaiStr.includes(query) ||
-          matchEater ||
-          matchPayer
-        );
+      // Lọc theo chọn ngày
+      if (filterDate) {
+        const itemDateStr = item.ngayAn.split('T')[0];
+        if (itemDateStr !== filterDate) return false;
       }
 
       return true;
     });
-  }, [buaTois, filterType, searchQuery, thanhViens]);
+  }, [buaTois, filterType, filterDate]);
 
   // Phân trang
   const totalPages = Math.max(1, Math.ceil(filteredItems.length / ITEMS_PER_PAGE));
@@ -127,8 +110,8 @@ export const BangChiPhi: React.FC<BangChiPhiProps> = React.memo(({
           </div>
         </div>
 
-        {/* Buttons thêm mới */}
-        <div className="flex items-center gap-2">
+        {/* Buttons thao tác: Thêm mới & Xóa dữ liệu */}
+        <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={onOpenAddBuaToi}
             className="gradient-btn px-3.5 py-2 rounded-xl text-white text-xs font-semibold flex items-center gap-1.5 shadow-md hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer"
@@ -143,10 +126,18 @@ export const BangChiPhi: React.FC<BangChiPhiProps> = React.memo(({
             <Sparkles className="w-3.5 h-3.5" />
             + Thêm chi phí khác
           </button>
+          <button
+            onClick={onOpenClearModal}
+            className="px-3.5 py-2 rounded-xl bg-rose-500/10 border border-rose-500/25 text-rose-400 hover:bg-rose-500/20 text-xs font-semibold flex items-center gap-1.5 shadow-md hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer"
+            title="Xóa toàn bộ dữ liệu"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            Xóa dữ liệu
+          </button>
         </div>
       </div>
 
-      {/* Bộ lọc loại & Ô tìm kiếm */}
+      {/* Bộ lọc loại & Lọc theo chọn ngày */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 mb-5">
         <div className="flex items-center bg-slate-900/60 p-1 rounded-xl border border-slate-800">
           <button
@@ -181,23 +172,28 @@ export const BangChiPhi: React.FC<BangChiPhiProps> = React.memo(({
           </button>
         </div>
 
-        <div className="relative min-w-[220px]">
-          <Search className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
-            placeholder="Tìm ngày, tên, nội dung..."
-            className="w-full bg-slate-900/80 border border-slate-800 rounded-xl pl-9 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors"
-          />
-          {searchQuery && (
-            <button
-              onClick={() => { setSearchQuery(''); setCurrentPage(1); }}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 text-xs"
-            >
-              ×
-            </button>
-          )}
+        {/* Lọc theo chọn ngày */}
+        <div className="flex items-center gap-2">
+          <div className="relative flex items-center bg-slate-900/80 border border-slate-800 rounded-xl px-3 py-1.5 focus-within:border-indigo-500 transition-colors">
+            <Calendar className="w-4 h-4 text-indigo-400 mr-2 shrink-0" />
+            <span className="text-xs text-slate-400 mr-2 hidden sm:inline whitespace-nowrap">Chọn ngày:</span>
+            <input
+              type="date"
+              value={filterDate}
+              onChange={(e) => { setFilterDate(e.target.value); setCurrentPage(1); }}
+              className="bg-transparent text-xs text-white focus:outline-none font-mono cursor-pointer"
+            />
+            {filterDate && (
+              <button
+                type="button"
+                onClick={() => { setFilterDate(''); setCurrentPage(1); }}
+                className="ml-2 text-slate-400 hover:text-rose-400 text-xs px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-750 font-medium transition-colors cursor-pointer"
+                title="Bỏ chọn ngày để xem tất cả"
+              >
+                Tất cả ngày
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -219,7 +215,7 @@ export const BangChiPhi: React.FC<BangChiPhiProps> = React.memo(({
               <tr>
                 <td colSpan={6} className="py-12 text-center text-slate-500">
                   <Receipt className="w-10 h-10 mx-auto text-slate-700 mb-2 opacity-60" />
-                  Không tìm thấy khoản chi nào.
+                  Không tìm thấy khoản chi nào{filterDate ? ` vào ngày ${formatDateDisplay(filterDate)}` : ''}.
                 </td>
               </tr>
             ) : (
@@ -314,14 +310,14 @@ export const BangChiPhi: React.FC<BangChiPhiProps> = React.memo(({
                       <div className="flex items-center justify-center gap-1 opacity-80 group-hover:opacity-100 transition-opacity">
                         <button
                           onClick={() => onEditItem(item)}
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-400 hover:bg-indigo-500/10 transition-colors"
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-400 hover:bg-indigo-500/10 transition-colors cursor-pointer"
                           title="Chỉnh sửa"
                         >
                           <Edit3 className="w-3.5 h-3.5" />
                         </button>
                         <button
                           onClick={() => item.id && onDeleteItem(item.id)}
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
                           title="Xóa"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -357,7 +353,7 @@ export const BangChiPhi: React.FC<BangChiPhiProps> = React.memo(({
             <button
               onClick={() => handlePageChange(currentPage - 1)}
               disabled={currentPage === 1}
-              className="p-1.5 rounded-lg border border-slate-800 text-slate-400 hover:text-white hover:bg-slate-800 disabled:opacity-30 disabled:pointer-events-none transition-colors"
+              className="p-1.5 rounded-lg border border-slate-800 text-slate-400 hover:text-white hover:bg-slate-800 disabled:opacity-30 disabled:pointer-events-none transition-colors cursor-pointer"
               title="Trang trước"
             >
               <ChevronLeft className="w-4 h-4" />
@@ -380,7 +376,7 @@ export const BangChiPhi: React.FC<BangChiPhiProps> = React.memo(({
                     )}
                     <button
                       onClick={() => handlePageChange(page)}
-                      className={`min-w-[28px] h-7 px-2 rounded-lg text-xs font-semibold transition-all ${
+                      className={`min-w-[28px] h-7 px-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                         currentPage === page
                           ? 'bg-indigo-600 text-white shadow-sm'
                           : 'border border-slate-800 text-slate-400 hover:text-white hover:bg-slate-800'
@@ -395,7 +391,7 @@ export const BangChiPhi: React.FC<BangChiPhiProps> = React.memo(({
             <button
               onClick={() => handlePageChange(currentPage + 1)}
               disabled={currentPage === totalPages}
-              className="p-1.5 rounded-lg border border-slate-800 text-slate-400 hover:text-white hover:bg-slate-800 disabled:opacity-30 disabled:pointer-events-none transition-colors"
+              className="p-1.5 rounded-lg border border-slate-800 text-slate-400 hover:text-white hover:bg-slate-800 disabled:opacity-30 disabled:pointer-events-none transition-colors cursor-pointer"
               title="Trang sau"
             >
               <ChevronRight className="w-4 h-4" />

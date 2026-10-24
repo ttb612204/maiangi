@@ -904,6 +904,37 @@ app.post('/api/toggle-chuyen-khoan', async (req, res) => {
   }
 });
 
+// 10. Xóa tất cả dữ liệu (Reset hệ thống)
+app.post('/api/xoa-tat-ca-du-lieu', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const { xoaThanhVien } = req.body;
+    await client.query('BEGIN');
+
+    await client.query('DELETE FROM bua_toi');
+    await client.query('DELETE FROM chi_phi_khac');
+    await client.query('DELETE FROM trang_thai_chuyen_khoan');
+
+    if (xoaThanhVien) {
+      await client.query('DELETE FROM thanh_vien');
+    }
+
+    await client.query('COMMIT');
+    return res.json({ 
+      message: xoaThanhVien 
+        ? 'Đã xóa toàn bộ dữ liệu bao gồm thành viên thành công.' 
+        : 'Đã xóa tất cả bữa ăn và chi phí thành công, giữ lại danh sách thành viên.' 
+    });
+  } catch (error: any) {
+    if (client) await client.query('ROLLBACK');
+    logErrorToFile(error);
+    console.error(error);
+    return res.status(500).json({ error: error.message || 'Lỗi hệ thống.' });
+  } finally {
+    if (client) client.release();
+  }
+});
+
 // Khởi chạy server nội bộ (khi dev offline)
 if (process.env.NODE_ENV !== 'production') {
   const port = process.env.PORT || 5000;

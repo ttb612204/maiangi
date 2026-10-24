@@ -133,4 +133,9 @@ export const toggleChuyenKhoan = async (payload: {
   return response.data;
 };
 
+export const clearAllData = async (xoaThanhVien: boolean = false): Promise<{ message: string }> => {
+  const response = await api.post('/xoa-tat-ca-du-lieu', { xoaThanhVien });
+  return response.data;
+};
+
 export default api;

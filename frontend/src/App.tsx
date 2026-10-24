@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { ChefHat, AlertCircle, X, Landmark, Coins, Check, QrCode, Receipt } from 'lucide-react';
+import { ChefHat, AlertCircle, X, Landmark, Coins, Check, QrCode, Receipt, AlertTriangle, Loader2, Trash2 } from 'lucide-react';
 import {
   getThanhViens,
   addThanhVien,
@@ -11,6 +11,7 @@ import {
   deleteBuaToi,
   getTongKetTuan,
   toggleChuyenKhoan,
+  clearAllData,
   ThanhVien,
   BuaToi,
   NguoiTraTien,
@@ -50,6 +51,11 @@ function App() {
     soTien: number;
     tuTen: string;
   } | null>(null);
+
+  // Quản lý Modal Xóa Dữ Liệu
+  const [isClearModalOpen, setIsClearModalOpen] = useState(false);
+  const [deleteMembersOption, setDeleteMembersOption] = useState(false);
+  const [clearingData, setClearingData] = useState(false);
 
   const fetchMembers = useCallback(async () => {
     setGlobalError(null);
@@ -231,6 +237,25 @@ function App() {
     setIsSummaryModalOpen(true);
   }, []);
 
+  const handleConfirmClearData = useCallback(async () => {
+    setClearingData(true);
+    try {
+      await clearAllData(deleteMembersOption);
+      await fetchAllData();
+      if (deleteMembersOption) {
+        await fetchMembers();
+      }
+      setIsClearModalOpen(false);
+      setDeleteMembersOption(false);
+      alert('Đã xóa dữ liệu thành công!');
+    } catch (err: any) {
+      console.error(err);
+      alert('Lỗi khi xóa dữ liệu: ' + (err.response?.data?.error || err.message));
+    } finally {
+      setClearingData(false);
+    }
+  }, [deleteMembersOption, fetchAllData, fetchMembers]);
+
   const formatVND = useCallback((amount: number) => {
     return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount);
   }, []);
@@ -411,6 +436,7 @@ function App() {
             onDeleteItem={handleDeleteItem}
             onOpenAddBuaToi={handleOpenAddBuaToi}
             onOpenAddChiPhi={handleOpenAddChiPhi}
+            onOpenClearModal={() => setIsClearModalOpen(true)}
           />
         </div>
       </main>
@@ -933,6 +959,120 @@ function App() {
             >
               Đóng mã QR
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Xác Nhận Xóa Dữ Liệu */}
+      {isClearModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden p-6 space-y-5 animate-in fade-in zoom-in-95 duration-200">
+            {/* Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-2.5 text-rose-400">
+                <AlertTriangle className="w-5 h-5 shrink-0" />
+                <h3 className="font-bold text-white text-base">
+                  Xác Nhận Xóa Dữ Liệu
+                </h3>
+              </div>
+              <button
+                onClick={() => { if (!clearingData) setIsClearModalOpen(false); }}
+                disabled={clearingData}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 cursor-pointer disabled:opacity-50"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Cảnh báo */}
+            <div className="bg-rose-500/10 border border-rose-500/25 rounded-xl p-3 text-xs text-rose-300 space-y-1">
+              <p className="font-bold">⚠️ Dữ liệu sau khi xóa sẽ không thể khôi phục!</p>
+              <p className="text-rose-300/80">Vui lòng chọn phạm vi bạn muốn xóa:</p>
+            </div>
+
+            {/* Các tùy chọn */}
+            <div className="space-y-3">
+              <div 
+                className={`flex items-start gap-3 p-3.5 rounded-xl border cursor-pointer transition-all ${
+                  !deleteMembersOption 
+                    ? 'bg-indigo-950/30 border-indigo-500/40 text-indigo-200 shadow-sm' 
+                    : 'bg-slate-950/40 border-slate-800 text-slate-400 hover:border-slate-700'
+                }`}
+                onClick={() => setDeleteMembersOption(false)}
+              >
+                <input
+                  type="radio"
+                  name="clearOption"
+                  checked={!deleteMembersOption}
+                  onChange={() => setDeleteMembersOption(false)}
+                  className="mt-1 accent-indigo-500 cursor-pointer"
+                />
+                <div className="space-y-0.5">
+                  <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                    Chỉ xóa các khoản chi
+                    <span className="bg-emerald-500/20 text-emerald-400 text-[10px] px-1.5 py-0.5 rounded font-mono font-normal">Khuyên dùng</span>
+                  </div>
+                  <p className="text-[11px] text-slate-400">
+                    Xóa sạch toàn bộ bữa tối, chi phí khác & công nợ về 0. Giữ nguyên danh sách thành viên và mã QR.
+                  </p>
+                </div>
+              </div>
+
+              <div 
+                className={`flex items-start gap-3 p-3.5 rounded-xl border cursor-pointer transition-all ${
+                  deleteMembersOption 
+                    ? 'bg-rose-950/30 border-rose-500/40 text-rose-200 shadow-sm' 
+                    : 'bg-slate-950/40 border-slate-800 text-slate-400 hover:border-slate-700'
+                }`}
+                onClick={() => setDeleteMembersOption(true)}
+              >
+                <input
+                  type="radio"
+                  name="clearOption"
+                  checked={deleteMembersOption}
+                  onChange={() => setDeleteMembersOption(true)}
+                  className="mt-1 accent-rose-500 cursor-pointer"
+                />
+                <div className="space-y-0.5">
+                  <div className="text-xs font-bold text-rose-300">
+                    Xóa tất cả (Bao gồm cả thành viên)
+                  </div>
+                  <p className="text-[11px] text-slate-400">
+                    Reset sạch trắng hệ thống về như lúc mới cài đặt, xóa cả tài khoản thành viên nhóm.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setIsClearModalOpen(false)}
+                disabled={clearingData}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-750 text-slate-300 text-xs font-semibold rounded-xl transition-colors cursor-pointer disabled:opacity-50"
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmClearData}
+                disabled={clearingData}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shadow-lg shadow-rose-950/50 disabled:opacity-50"
+              >
+                {clearingData ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    Đang xóa...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Xác nhận xóa
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}
