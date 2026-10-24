@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Plus, Trash2, Save, Loader2, AlertCircle, Calculator } from 'lucide-react';
+import { X, Plus, Trash2, Save, Loader2, AlertCircle } from 'lucide-react';
 import { BuaToi, NguoiTraTien, ThanhVien, NguoiAnChiTiet } from '../services/api';
 
 export interface DayConfig {
@@ -169,34 +169,6 @@ export const FormChiPhiKhac: React.FC<FormChiPhiKhacProps> = ({
     });
   };
 
-  const handleSplitEqually = () => {
-    const checkedMembers = thanhViens.filter((tv) => shareMap[tv.id]?.isSharing);
-    if (checkedMembers.length === 0) {
-      alert('Vui lòng chọn ít nhất một người chia sẻ chi phí.');
-      return;
-    }
-    const inputTotal = prompt('Nhập tổng số tiền chi phí để chia đều:', tongTienChi > 0 ? String(tongTienChi) : '');
-    if (!inputTotal) return;
-    const totalNum = Number(inputTotal);
-    if (isNaN(totalNum) || totalNum <= 0) {
-      alert('Số tiền không hợp lệ.');
-      return;
-    }
-
-    const perPerson = Math.round(totalNum / checkedMembers.length);
-    setShareMap((prev) => {
-      const updated = { ...prev };
-      checkedMembers.forEach((tv) => {
-        updated[tv.id] = { isSharing: true, soTien: perPerson };
-      });
-      return updated;
-    });
-
-    if (nguoiTraTien.length === 1) {
-      setNguoiTraTien([{ thanhVienId: nguoiTraTien[0].thanhVienId, soTienDaTra: totalNum }]);
-    }
-  };
-
   const handleAddNguoiTra = () => {
     const available = thanhViens.find((tv) => !nguoiTraTien.some((ntt) => ntt.thanhVienId === tv.id));
     const nextId = available ? available.id : (thanhViens[0]?.id || 0);
@@ -355,20 +327,9 @@ export const FormChiPhiKhac: React.FC<FormChiPhiKhacProps> = ({
 
           {/* Tổng tiền tự động */}
           <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <label className="block text-sm font-semibold text-slate-300">
-                Tổng tiền chi phí (Tự động cộng tiền của từng người)
-              </label>
-              <button
-                type="button"
-                onClick={handleSplitEqually}
-                className="text-xs text-fuchsia-400 hover:text-fuchsia-300 flex items-center gap-1 font-semibold transition-colors cursor-pointer"
-                title="Nhập tổng tiền để chia đều cho mọi người"
-              >
-                <Calculator className="w-3.5 h-3.5" />
-                Chia đều số tiền
-              </button>
-            </div>
+            <label className="block text-sm font-semibold text-slate-300">
+              Tổng tiền chi phí (Tự động cộng tiền của từng người)
+            </label>
             <div className="w-full bg-slate-950/60 border border-slate-800/80 rounded-xl px-4 py-3 text-lg font-extrabold text-fuchsia-400 font-mono flex items-center justify-between">
               <span>{new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(tongTienChi)}</span>
               <span className="text-xs font-normal text-slate-500">
