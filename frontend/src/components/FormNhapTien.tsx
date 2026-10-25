@@ -45,6 +45,10 @@ const getTodayString = () => {
   return `${year}-${month}-${day}`;
 };
 
+const formatVND = (amount: number) => {
+  return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount);
+};
+
 export const FormNhapTien: React.FC<FormNhapTienProps> = ({
   day,
   buaToi,
@@ -54,6 +58,7 @@ export const FormNhapTien: React.FC<FormNhapTienProps> = ({
   onClose,
 }) => {
   const [selectedDate, setSelectedDate] = useState<string>(getTodayString());
+  const [tienChung, setTienChung] = useState<number>(0);
   // Quản lý từng người ăn: id -> { isEating: boolean, soTien: number }
   const [eaterMap, setEaterMap] = useState<Record<number, { isEating: boolean; soTien: number }>>({});
   const [nguoiTraTien, setNguoiTraTien] = useState<NguoiTraTien[]>([]);
@@ -61,26 +66,41 @@ export const FormNhapTien: React.FC<FormNhapTienProps> = ({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  // Tính tổng tiền từ tiền ăn của từng người
-  const tongTienAn = Object.values(eaterMap).reduce((sum, item) => {
+  // Số người tham gia ăn
+  const activeEatersList = thanhViens.filter((tv) => eaterMap[tv.id]?.isEating);
+  const soNguoiAn = activeEatersList.length;
+
+  // Tiền chung được chia đều cho mỗi người tham gia ăn
+  const tienChungMoiNguoi = soNguoiAn > 0 ? Math.round(Number(tienChung || 0) / soNguoiAn) : 0;
+
+  // Tính tổng tiền ăn riêng của từng người
+  const tongTienRieng = Object.values(eaterMap).reduce((sum, item) => {
     return sum + (item.isEating ? (Number(item.soTien) || 0) : 0);
   }, 0);
+
+  // Tổng tiền toàn bộ bữa ăn = Tổng tiền ăn riêng + Tiền chung
+  const tongTienBuaAn = tongTienRieng + Number(tienChung || 0);
 
   // Load dữ liệu ban đầu
   useEffect(() => {
     if (buaToi) {
       setSelectedDate(buaToi.ngayAn.split('T')[0]);
+      const savedTienChung = Number(buaToi.tienChung || 0);
+      setTienChung(savedTienChung);
       
       const newEaterMap: Record<number, { isEating: boolean; soTien: number }> = {};
       const buaToiEaterIds = buaToi.nguoiAnIds || [];
       const detailedEaters = buaToi.chiTietNguoiAn || [];
       const defaultPerPerson = buaToiEaterIds.length > 0 ? Math.round(buaToi.tongTien / buaToiEaterIds.length) : 0;
+      const perEaterTienChung = buaToiEaterIds.length > 0 ? Math.round(savedTienChung / buaToiEaterIds.length) : 0;
 
       thanhViens.forEach((tv) => {
         const isEating = buaToiEaterIds.includes(tv.id);
         const detailed = detailedEaters.find((d) => d.thanhVienId === tv.id);
-        const amount = detailed && Number(detailed.soTien) > 0 ? Number(detailed.soTien) : (isEating ? defaultPerPerson : 0);
-        newEaterMap[tv.id] = { isEating, soTien: amount };
+        const totalAmount = detailed && Number(detailed.soTien) > 0 ? Number(detailed.soTien) : (isEating ? defaultPerPerson : 0);
+        // Trừ lại phần tiền chung để khôi phục tiền ăn riêng ban đầu
+        const individualAmount = Math.max(0, totalAmount - (isEating ? perEaterTienChung : 0));
+        newEaterMap[tv.id] = { isEating, soTien: individualAmount };
       });
       setEaterMap(newEaterMap);
 
@@ -88,6 +108,7 @@ export const FormNhapTien: React.FC<FormNhapTienProps> = ({
       setIsManualPayerAmount(true);
     } else {
       setSelectedDate(day ? day.dateString : getTodayString());
+      setTienChung(0);
       
       const newEaterMap: Record<number, { isEating: boolean; soTien: number }> = {};
       thanhViens.forEach((tv) => {
@@ -107,10 +128,10 @@ export const FormNhapTien: React.FC<FormNhapTienProps> = ({
 
   // Tự động gán số tiền người trả bằng tổng tiền ăn nếu chỉ có 1 người trả và chưa sửa tay
   useEffect(() => {
-    if (!isManualPayerAmount && nguoiTraTien.length === 1 && tongTienAn > 0) {
-      setNguoiTraTien([{ thanhVienId: nguoiTraTien[0].thanhVienId, soTienDaTra: tongTienAn }]);
+    if (!isManualPayerAmount && nguoiTraTien.length === 1 && tongTienBuaAn > 0) {
+      setNguoiTraTien([{ thanhVienId: nguoiTraTien[0].thanhVienId, soTienDaTra: tongTienBuaAn }]);
     }
-  }, [tongTienAn, isManualPayerAmount, nguoiTraTien.length]);
+  }, [tongTienBuaAn, isManualPayerAmount, nguoiTraTien.length]);
 
   const handleToggleEater = (id: number) => {
     setEaterMap((prev) => {
@@ -188,19 +209,21 @@ export const FormNhapTien: React.FC<FormNhapTienProps> = ({
 
     const activeEaters: NguoiAnChiTiet[] = thanhViens
       .filter((tv) => eaterMap[tv.id]?.isEating)
-      .map((tv) => ({
-        thanhVienId: tv.id,
-        soTien: Number(eaterMap[tv.id]?.soTien || 0),
-      }));
+      .map((tv) => {
+        const individual = Number(eaterMap[tv.id]?.soTien || 0);
+        return {
+          thanhVienId: tv.id,
+          soTien: individual + tienChungMoiNguoi,
+        };
+      });
 
     if (activeEaters.length === 0) {
       setErrorMsg('Vui lòng chọn ít nhất một người tham gia ăn.');
       return;
     }
 
-    const tongTien = activeEaters.reduce((sum, e) => sum + e.soTien, 0);
-    if (tongTien <= 0) {
-      setErrorMsg('Vui lòng nhập số tiền ăn cho ít nhất một người.');
+    if (tongTienBuaAn <= 0) {
+      setErrorMsg('Vui lòng nhập tiền ăn riêng hoặc tiền chung bữa ăn.');
       return;
     }
 
@@ -228,7 +251,8 @@ export const FormNhapTien: React.FC<FormNhapTienProps> = ({
       await onSave({
         id: buaToi?.id,
         thuTrongTuan: getDayOfWeekVietnamese(selectedDate),
-        tongTien,
+        tongTien: tongTienBuaAn,
+        tienChung: Number(tienChung || 0),
         ngayAn: selectedDate,
         nguoiAnIds: activeEaters.map((e) => e.thanhVienId),
         chiTietNguoiAn: activeEaters,
@@ -241,8 +265,6 @@ export const FormNhapTien: React.FC<FormNhapTienProps> = ({
       setSaving(false);
     }
   };
-
-  const checkedCount = thanhViens.filter((tv) => eaterMap[tv.id]?.isEating).length;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200">
@@ -295,15 +317,57 @@ export const FormNhapTien: React.FC<FormNhapTienProps> = ({
             </div>
           </div>
 
+          {/* Tiền chung bữa ăn (Tự động chia đều cho người ăn) */}
+          <div className="space-y-2 p-3.5 rounded-xl bg-indigo-950/20 border border-indigo-500/30">
+            <div className="flex items-center justify-between">
+              <div>
+                <label className="block text-sm font-semibold text-indigo-300">
+                  Tiền chung bữa ăn
+                </label>
+                <span className="block text-[11px] text-slate-400">
+                  {soNguoiAn > 0 
+                    ? `(Tự động chia đều cho ${soNguoiAn} người ăn)` 
+                    : '(Vui lòng chọn người tham gia ăn bên dưới)'}
+                </span>
+              </div>
+              {soNguoiAn > 0 && Number(tienChung || 0) > 0 && (
+                <span className="text-xs font-bold text-amber-400 bg-amber-950/70 px-2.5 py-1 rounded-lg border border-amber-500/30 font-mono">
+                  Mỗi người +{formatVND(tienChungMoiNguoi)}
+                </span>
+              )}
+            </div>
+            <div className="relative">
+              <input
+                type="number"
+                min="0"
+                step="1000"
+                placeholder="0"
+                value={tienChung === 0 ? '' : tienChung}
+                onChange={(e) => setTienChung(Number(e.target.value) || 0)}
+                className="w-full bg-slate-950/80 border border-slate-700 rounded-xl pl-3.5 pr-8 py-2 text-sm text-amber-300 font-mono font-bold focus:outline-none focus:border-indigo-500"
+              />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-500 font-mono">
+                đ
+              </span>
+            </div>
+          </div>
+
           {/* Tổng tiền hiển thị tự động */}
           <div className="space-y-2">
             <label className="block text-sm font-semibold text-slate-300">
-              Tổng tiền bữa tối (Tự động cộng tiền của từng người)
+              Tổng tiền bữa tối (Tự động cộng tiền riêng + tiền chung)
             </label>
-            <div className="w-full bg-slate-950/60 border border-slate-800/80 rounded-xl px-4 py-3 text-lg font-extrabold text-emerald-400 font-mono flex items-center justify-between">
-              <span>{new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(tongTienAn)}</span>
+            <div className="w-full bg-slate-950/60 border border-slate-800/80 rounded-xl px-4 py-3 font-mono flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <span className="text-xl font-extrabold text-emerald-400">
+                  {formatVND(tongTienBuaAn)}
+                </span>
+                <span className="block text-[11px] text-slate-400 font-normal">
+                  (Tiền riêng: {formatVND(tongTienRieng)} + Tiền chung: {formatVND(Number(tienChung || 0))})
+                </span>
+              </div>
               <span className="text-xs font-normal text-slate-500">
-                {checkedCount} người tham gia
+                {soNguoiAn} người tham gia
               </span>
             </div>
           </div>
@@ -313,10 +377,10 @@ export const FormNhapTien: React.FC<FormNhapTienProps> = ({
             <div className="flex items-center justify-between">
               <div>
                 <label className="text-sm font-semibold text-slate-300">
-                  Số tiền ăn của từng người ({checkedCount}/{thanhViens.length})
+                  Tiền ăn riêng của từng người ({soNguoiAn}/{thanhViens.length})
                 </label>
                 <span className="block text-[11px] text-slate-500">
-                  Nhập số tiền phần ăn của mỗi thành viên
+                  Nhập số tiền phần ăn riêng của mỗi thành viên (sẽ cộng thêm tiền chung)
                 </span>
               </div>
               <div className="flex items-center gap-2 text-xs">
@@ -368,11 +432,16 @@ export const FormNhapTien: React.FC<FormNhapTienProps> = ({
                       </span>
                     </div>
 
-                    <div className="flex items-center gap-2 w-44">
-                      <div className="relative flex-1">
+                    <div className="flex items-center gap-2">
+                      {isSelected && Number(tienChung || 0) > 0 && (
+                        <div className="text-[11px] text-amber-400 font-mono bg-amber-950/40 px-2 py-1 rounded border border-amber-500/20 whitespace-nowrap hidden sm:block" title="Phần tiền chung được chia">
+                          +{formatVND(tienChungMoiNguoi)}
+                        </div>
+                      )}
+                      <div className="relative w-36">
                         <input
                           type="number"
-                          placeholder="0"
+                          placeholder="Tiền riêng"
                           min="0"
                           step="1000"
                           value={eaterInfo.soTien === 0 ? '' : eaterInfo.soTien}

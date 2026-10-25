@@ -290,18 +290,31 @@ export const BangChiPhi: React.FC<BangChiPhiProps> = React.memo(({
                     <td className="py-3 px-4">
                       <div className="flex flex-wrap gap-1 max-w-xs">
                         {item.nguoiAnIds && item.nguoiAnIds.length > 0 ? (
-                          item.nguoiAnIds.map((id) => (
-                            <span
-                              key={id}
-                              className="inline-block bg-slate-900 text-slate-300 border border-slate-800 text-[10px] px-1.5 py-0.5 rounded"
-                            >
-                              {getTenThanhVien(id)}
-                            </span>
-                          ))
+                          item.nguoiAnIds.map((id) => {
+                            const detail = item.chiTietNguoiAn?.find((d) => d.thanhVienId === id);
+                            return (
+                              <span
+                                key={id}
+                                className="inline-flex items-center gap-1 bg-slate-900 text-slate-300 border border-slate-800 text-[10px] px-1.5 py-0.5 rounded"
+                              >
+                                <span>{getTenThanhVien(id)}</span>
+                                {detail && detail.soTien > 0 && (
+                                  <span className="font-mono text-indigo-300 font-semibold">
+                                    ({formatVND(detail.soTien)})
+                                  </span>
+                                )}
+                              </span>
+                            );
+                          })
                         ) : (
                           <span className="text-slate-600 italic text-[11px]">Chưa chọn</span>
                         )}
                       </div>
+                      {item.tienChung && Number(item.tienChung) > 0 ? (
+                        <div className="mt-1 text-[10px] text-amber-400 font-mono">
+                          Tiền chung: {formatVND(Number(item.tienChung))}
+                        </div>
+                      ) : null}
                     </td>
 
                     {/* Người Đã Chi Trả */}

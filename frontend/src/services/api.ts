@@ -27,6 +27,7 @@ export interface BuaToi {
   id?: number;
   thuTrongTuan: string;
   tongTien: number;
+  tienChung?: number;
   ngayAn: string;
   nguoiAnIds: number[];
   chiTietNguoiAn?: NguoiAnChiTiet[];
@@ -108,6 +109,7 @@ export const addChiPhiKhac = async (payload: {
   id?: number;
   moTa: string;
   tongTien: number;
+  tienChung?: number;
   ngayChi: string;
   nguoiChiaIds: number[];
   chiTietNguoiChia?: NguoiAnChiTiet[];

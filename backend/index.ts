@@ -78,6 +78,12 @@ app.use(async (req, res, next) => {
 
       ALTER TABLE nguoi_chia_chi_phi
       ADD COLUMN IF NOT EXISTS so_tien NUMERIC(12, 2) DEFAULT 0;
+
+      ALTER TABLE bua_toi
+      ADD COLUMN IF NOT EXISTS tien_chung NUMERIC(12, 2) DEFAULT 0;
+
+      ALTER TABLE chi_phi_khac
+      ADD COLUMN IF NOT EXISTS tien_chung NUMERIC(12, 2) DEFAULT 0;
     `);
 
     // 2. Dọn dẹp bảng bua_toi: Xóa các cột loai và mo_ta thừa vì đã dùng bảng chi_phi_khac riêng biệt
@@ -445,7 +451,7 @@ app.delete('/api/xoa-thanh-vien/:id', async (req, res) => {
 app.post('/api/them-bua-toi', async (req, res) => {
   const client = await pool.connect();
   try {
-    const { id, tongTien, ngayAn, nguoiAnIds, nguoiTraTien } = req.body;
+    const { id, tongTien, ngayAn, nguoiAnIds, nguoiTraTien, tienChung } = req.body;
     let thuTrongTuan = req.body.thuTrongTuan;
     if (!thuTrongTuan && ngayAn) {
       thuTrongTuan = getThuVietnamese(ngayAn);
@@ -478,10 +484,10 @@ app.post('/api/them-bua-toi', async (req, res) => {
       }
     }
 
-    // Thêm bữa tối mới
+    // Thêm bữa tối mới kèm tiền chung
     const insertRes = await client.query(
-      'INSERT INTO bua_toi (thu_trong_tuan, tong_tien, ngay_an) VALUES ($1, $2, $3) RETURNING id',
-      [thuTrongTuan, tongTien, dateObj]
+      'INSERT INTO bua_toi (thu_trong_tuan, tong_tien, ngay_an, tien_chung) VALUES ($1, $2, $3, $4) RETURNING id',
+      [thuTrongTuan, tongTien, dateObj, Number(tienChung || 0)]
     );
     const buaToiId = insertRes.rows[0].id;
 
@@ -518,6 +524,7 @@ app.post('/api/them-bua-toi', async (req, res) => {
       id: buaToiId,
       thuTrongTuan,
       tongTien,
+      tienChung: Number(tienChung || 0),
       ngayAn,
       nguoiAnIds,
       nguoiTraTien
@@ -540,7 +547,7 @@ app.post('/api/them-bua-toi', async (req, res) => {
 app.post('/api/them-chi-phi-khac', async (req, res) => {
   const client = await pool.connect();
   try {
-    const { id, moTa, tongTien, ngayChi, nguoiChiaIds, nguoiTraTien } = req.body;
+    const { id, moTa, tongTien, ngayChi, nguoiChiaIds, nguoiTraTien, tienChung } = req.body;
 
     // Validation cơ bản
     if (!moTa || typeof tongTien !== 'number' || tongTien < 0 || !ngayChi) {
@@ -566,8 +573,8 @@ app.post('/api/them-chi-phi-khac', async (req, res) => {
 
     // Thêm chi phí khác mới vào bảng chi_phi_khac
     const insertRes = await client.query(
-      "INSERT INTO chi_phi_khac (mo_ta, tong_tien, ngay_chi, thu_trong_tuan) VALUES ($1, $2, $3, $4) RETURNING id",
-      [moTa.trim(), tongTien, dateObj, thuTrongTuan]
+      "INSERT INTO chi_phi_khac (mo_ta, tong_tien, ngay_chi, thu_trong_tuan, tien_chung) VALUES ($1, $2, $3, $4, $5) RETURNING id",
+      [moTa.trim(), tongTien, dateObj, thuTrongTuan, Number(tienChung || 0)]
     );
     const chiPhiId = insertRes.rows[0].id;
 
@@ -604,6 +611,7 @@ app.post('/api/them-chi-phi-khac', async (req, res) => {
       id: chiPhiId,
       moTa,
       tongTien,
+      tienChung: Number(tienChung || 0),
       ngayAn: dateObj.toISOString(),
       nguoiAnIds: nguoiChiaIds,
       nguoiTraTien,
@@ -643,13 +651,13 @@ app.get('/api/danh-sach-bua-toi', async (req, res) => {
 
     // 1. SELECT raw dinners and expenses
     const dinnersRes = await pool.query(`
-      SELECT b.id, b.thu_trong_tuan as "thuTrongTuan", b.tong_tien as "tongTien", b.ngay_an as "ngayAn"
+      SELECT b.id, b.thu_trong_tuan as "thuTrongTuan", b.tong_tien as "tongTien", b.ngay_an as "ngayAn", COALESCE(b.tien_chung, 0) as "tienChung"
       FROM bua_toi b
       ${whereClauseDinner}
     `, params);
 
     const expensesRes = await pool.query(`
-      SELECT c.id, c.thu_trong_tuan as "thuTrongTuan", c.tong_tien as "tongTien", c.ngay_chi as "ngayAn", c.mo_ta as "moTa"
+      SELECT c.id, c.thu_trong_tuan as "thuTrongTuan", c.tong_tien as "tongTien", c.ngay_chi as "ngayAn", c.mo_ta as "moTa", COALESCE(c.tien_chung, 0) as "tienChung"
       FROM chi_phi_khac c
       ${whereClauseExpense}
     `, params);
@@ -681,6 +689,7 @@ app.get('/api/danh-sach-bua-toi', async (req, res) => {
         id: buaToiId,
         thuTrongTuan: row.thuTrongTuan || '',
         tongTien: Number(row.tongTien),
+        tienChung: Number(row.tienChung || 0),
         ngayAn: row.ngayAn,
         loai: 'bua_toi',
         moTa: '',
@@ -711,6 +720,7 @@ app.get('/api/danh-sach-bua-toi', async (req, res) => {
         id: chiPhiId,
         thuTrongTuan: row.thuTrongTuan || '',
         tongTien: Number(row.tongTien),
+        tienChung: Number(row.tienChung || 0),
         ngayAn: row.ngayAn,
         loai: 'chi_phi_khac',
         moTa: row.moTa || '',
@@ -754,13 +764,13 @@ app.get(['/api/tong-ket-tuan', '/api/tong-ket'], async (req, res) => {
     }
 
     const dinnersRes = await pool.query(`
-      SELECT b.id, b.thu_trong_tuan as "thuTrongTuan", b.tong_tien as "tongTien", b.ngay_an as "ngayAn"
+      SELECT b.id, b.thu_trong_tuan as "thuTrongTuan", b.tong_tien as "tongTien", b.ngay_an as "ngayAn", COALESCE(b.tien_chung, 0) as "tienChung"
       FROM bua_toi b
       ${whereClauseDinner}
     `, queryParams);
 
     const expensesRes = await pool.query(`
-      SELECT c.id, c.thu_trong_tuan as "thuTrongTuan", c.tong_tien as "tongTien", c.ngay_chi as "ngayAn", c.mo_ta as "moTa"
+      SELECT c.id, c.thu_trong_tuan as "thuTrongTuan", c.tong_tien as "tongTien", c.ngay_chi as "ngayAn", c.mo_ta as "moTa", COALESCE(c.tien_chung, 0) as "tienChung"
       FROM chi_phi_khac c
       ${whereClauseExpense}
     `, queryParams);
@@ -791,6 +801,7 @@ app.get(['/api/tong-ket-tuan', '/api/tong-ket'], async (req, res) => {
         id: buaToiId,
         thuTrongTuan: row.thuTrongTuan || '',
         tongTien: Number(row.tongTien),
+        tienChung: Number(row.tienChung || 0),
         ngayAn: row.ngayAn,
         loai: 'bua_toi',
         moTa: '',
@@ -820,6 +831,7 @@ app.get(['/api/tong-ket-tuan', '/api/tong-ket'], async (req, res) => {
         id: chiPhiId,
         thuTrongTuan: row.thuTrongTuan || '',
         tongTien: Number(row.tongTien),
+        tienChung: Number(row.tienChung || 0),
         ngayAn: row.ngayAn,
         loai: 'chi_phi_khac',
         moTa: row.moTa || '',
