@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Plus, Trash2, Save, Loader2, AlertCircle } from 'lucide-react';
+import { X, Trash2, Save, Loader2, AlertCircle } from 'lucide-react';
 import { BuaToi, NguoiTraTien, ThanhVien, NguoiAnChiTiet } from '../services/api';
 
 export interface DayConfig {
@@ -72,7 +72,6 @@ export const FormChiPhiKhac: React.FC<FormChiPhiKhacProps> = ({
   // Quản lý từng người chia sẻ: id -> { isSharing: boolean, soTien: number }
   const [shareMap, setShareMap] = useState<Record<number, { isSharing: boolean; soTien: number }>>({});
   const [nguoiTraTien, setNguoiTraTien] = useState<NguoiTraTien[]>([]);
-  const [isManualPayerAmount, setIsManualPayerAmount] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -88,7 +87,7 @@ export const FormChiPhiKhac: React.FC<FormChiPhiKhacProps> = ({
     return sum + (item.isSharing ? (Number(item.soTien) || 0) : 0);
   }, 0);
 
-  // Tổng tiền chi phí = Tổng tiền riêng + Tiền chung
+  // Tổng tiền chi phí = Tổng tiền riêng + Tiền dùng chung
   const tongTienChi = tongTienRieng + Number(tienChung || 0);
 
   // Load dữ liệu cũ nếu đang chỉnh sửa
@@ -102,21 +101,22 @@ export const FormChiPhiKhac: React.FC<FormChiPhiKhacProps> = ({
       const newShareMap: Record<number, { isSharing: boolean; soTien: number }> = {};
       const chiPhiEaterIds = chiPhi.nguoiAnIds || [];
       const detailedShares = chiPhi.chiTietNguoiAn || [];
-      const defaultPerPerson = chiPhiEaterIds.length > 0 ? Math.round(chiPhi.tongTien / chiPhiEaterIds.length) : 0;
       const perEaterTienChung = chiPhiEaterIds.length > 0 ? Math.round(savedTienChung / chiPhiEaterIds.length) : 0;
 
       thanhViens.forEach((tv) => {
         const isSharing = chiPhiEaterIds.includes(tv.id);
         const detailed = detailedShares.find((d) => d.thanhVienId === tv.id);
-        const totalAmount = detailed && Number(detailed.soTien) > 0 ? Number(detailed.soTien) : (isSharing ? defaultPerPerson : 0);
-        // Trừ lại phần tiền chung để khôi phục tiền riêng
-        const individualAmount = Math.max(0, totalAmount - (isSharing ? perEaterTienChung : 0));
+        let individualAmount = 0;
+        if (detailed && detailed.soTienRieng !== undefined && Number(detailed.soTienRieng) >= 0) {
+          individualAmount = Number(detailed.soTienRieng);
+        } else if (detailed && Number(detailed.soTien) > 0) {
+          individualAmount = Math.max(0, Number(detailed.soTien) - perEaterTienChung);
+        }
         newShareMap[tv.id] = { isSharing, soTien: individualAmount };
       });
       setShareMap(newShareMap);
 
       setNguoiTraTien(chiPhi.nguoiTraTien || []);
-      setIsManualPayerAmount(true);
     } else {
       setMoTa('');
       setTienChung(0);
@@ -139,17 +139,16 @@ export const FormChiPhiKhac: React.FC<FormChiPhiKhacProps> = ({
       } else {
         setNguoiTraTien([]);
       }
-      setIsManualPayerAmount(false);
     }
     setErrorMsg(null);
   }, [chiPhi, daysOfWeek, thanhViens]);
 
-  // Tự động gán số tiền người trả bằng tổng tiền nếu chỉ có 1 người trả và chưa sửa tay
+  // Tự động gán số tiền người trả bằng tổng tiền
   useEffect(() => {
-    if (!isManualPayerAmount && nguoiTraTien.length === 1 && tongTienChi > 0) {
+    if (nguoiTraTien.length > 0) {
       setNguoiTraTien([{ thanhVienId: nguoiTraTien[0].thanhVienId, soTienDaTra: tongTienChi }]);
     }
-  }, [tongTienChi, isManualPayerAmount, nguoiTraTien.length]);
+  }, [tongTienChi]);
 
   const handleToggleShare = (id: number) => {
     setShareMap((prev) => {
@@ -191,31 +190,6 @@ export const FormChiPhiKhac: React.FC<FormChiPhiKhacProps> = ({
     });
   };
 
-  const handleAddNguoiTra = () => {
-    const available = thanhViens.find((tv) => !nguoiTraTien.some((ntt) => ntt.thanhVienId === tv.id));
-    const nextId = available ? available.id : (thanhViens[0]?.id || 0);
-    setNguoiTraTien([...nguoiTraTien, { thanhVienId: nextId, soTienDaTra: 0 }]);
-    setIsManualPayerAmount(true);
-  };
-
-  const handleRemoveNguoiTra = (index: number) => {
-    setNguoiTraTien(nguoiTraTien.filter((_, idx) => idx !== index));
-    setIsManualPayerAmount(true);
-  };
-
-  const handleChangeNguoiTraId = (index: number, newId: number) => {
-    const updated = [...nguoiTraTien];
-    updated[index].thanhVienId = newId;
-    setNguoiTraTien(updated);
-  };
-
-  const handleChangeNguoiTraTien = (index: number, amount: number) => {
-    const updated = [...nguoiTraTien];
-    updated[index].soTienDaTra = amount;
-    setNguoiTraTien(updated);
-    setIsManualPayerAmount(true);
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
@@ -236,7 +210,8 @@ export const FormChiPhiKhac: React.FC<FormChiPhiKhacProps> = ({
         const individual = Number(shareMap[tv.id]?.soTien || 0);
         return {
           thanhVienId: tv.id,
-          soTien: individual + tienChungMoiNguoi,
+          soTien: individual + tienChungMoiNguoi, // Chi phí thực tế người này phải chịu (riêng + chia đều chung)
+          soTienRieng: individual,               // Tiền riêng của người này
         };
       });
 
@@ -246,23 +221,27 @@ export const FormChiPhiKhac: React.FC<FormChiPhiKhacProps> = ({
     }
 
     if (tongTienChi <= 0) {
-      setErrorMsg('Vui lòng nhập số tiền cho ít nhất một người hoặc tiền chung.');
+      setErrorMsg('Vui lòng nhập số tiền riêng hoặc tiền chung của chi phí.');
       return;
     }
 
-    if (nguoiTraTien.length === 0) {
+    const finalNguoiTra = nguoiTraTien.length === 1
+      ? [{ thanhVienId: nguoiTraTien[0].thanhVienId, soTienDaTra: tongTienChi }]
+      : nguoiTraTien;
+
+    if (finalNguoiTra.length === 0) {
       setErrorMsg('Vui lòng thêm ít nhất một người trả tiền.');
       return;
     }
 
-    const tongTienNguoiTra = nguoiTraTien.reduce((sum, p) => sum + (Number(p.soTienDaTra) || 0), 0);
+    const tongTienNguoiTra = finalNguoiTra.reduce((sum, p) => sum + (Number(p.soTienDaTra) || 0), 0);
     if (tongTienNguoiTra <= 0) {
-      setErrorMsg('Vui lòng nhập số tiền người chi trả.');
+      setErrorMsg('Vui lòng nhập số tiền riêng hoặc tiền chung của chi phí.');
       return;
     }
 
     // Kiểm tra trùng lặp người trả tiền
-    const listPayerIds = nguoiTraTien.map((p) => p.thanhVienId);
+    const listPayerIds = finalNguoiTra.map((p) => p.thanhVienId);
     if (new Set(listPayerIds).size !== listPayerIds.length) {
       setErrorMsg('Danh sách người trả tiền không được trùng lặp.');
       return;
@@ -278,7 +257,7 @@ export const FormChiPhiKhac: React.FC<FormChiPhiKhacProps> = ({
         ngayChi: selectedDateStr,
         nguoiChiaIds: activeSharers.map((s) => s.thanhVienId),
         chiTietNguoiChia: activeSharers,
-        nguoiTraTien,
+        nguoiTraTien: finalNguoiTra,
       });
       onClose();
     } catch (err: any) {
@@ -353,7 +332,7 @@ export const FormChiPhiKhac: React.FC<FormChiPhiKhacProps> = ({
             <div className="flex items-center justify-between">
               <div>
                 <label className="block text-sm font-semibold text-fuchsia-300">
-                  Tiền chung
+                  Tiền dùng chung (Gia vị, đồ dùng chung...)
                 </label>
                 <span className="block text-[11px] text-slate-400">
                   {soNguoiChia > 0 
@@ -363,7 +342,7 @@ export const FormChiPhiKhac: React.FC<FormChiPhiKhacProps> = ({
               </div>
               {soNguoiChia > 0 && Number(tienChung || 0) > 0 && (
                 <span className="text-xs font-bold text-amber-400 bg-amber-950/70 px-2.5 py-1 rounded-lg border border-amber-500/30 font-mono">
-                  Mỗi người +{formatVND(tienChungMoiNguoi)}
+                  Mỗi người: +{formatVND(tienChungMoiNguoi)}
                 </span>
               )}
             </div>
@@ -386,7 +365,7 @@ export const FormChiPhiKhac: React.FC<FormChiPhiKhacProps> = ({
           {/* Tổng tiền tự động */}
           <div className="space-y-2">
             <label className="block text-sm font-semibold text-slate-300">
-              Tổng tiền chi phí (Tự động cộng tiền riêng + tiền chung)
+              Tổng tiền chi phí (Tổng thanh toán)
             </label>
             <div className="w-full bg-slate-950/60 border border-slate-800/80 rounded-xl px-4 py-3 font-mono flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <div>
@@ -397,7 +376,7 @@ export const FormChiPhiKhac: React.FC<FormChiPhiKhacProps> = ({
                   (Tiền riêng: {formatVND(tongTienRieng)} + Tiền chung: {formatVND(Number(tienChung || 0))})
                 </span>
               </div>
-              <span className="text-xs font-normal text-slate-500">
+              <span className="text-xs font-normal text-slate-400">
                 {soNguoiChia} người chia sẻ
               </span>
             </div>
@@ -408,10 +387,10 @@ export const FormChiPhiKhac: React.FC<FormChiPhiKhacProps> = ({
             <div className="flex items-center justify-between">
               <div>
                 <label className="block text-sm font-semibold text-slate-300">
-                  Tiền chia riêng của từng người ({soNguoiChia}/{thanhViens.length})
+                  Tiền riêng của từng người ({soNguoiChia}/{thanhViens.length})
                 </label>
                 <span className="block text-[11px] text-slate-500">
-                  Nhập số tiền phần chia riêng của mỗi thành viên (sẽ cộng thêm tiền chung)
+                  Nhập số tiền phần riêng của mỗi người (sẽ cộng thêm phần tiền chung)
                 </span>
               </div>
               <div className="flex items-center gap-2 text-xs">
@@ -433,15 +412,17 @@ export const FormChiPhiKhac: React.FC<FormChiPhiKhacProps> = ({
               </div>
             </div>
 
-            <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+            <div className="space-y-2.5 max-h-60 overflow-y-auto pr-1">
               {thanhViens.map((tv) => {
                 const shareInfo = shareMap[tv.id] || { isSharing: false, soTien: 0 };
                 const isSelected = shareInfo.isSharing;
+                const userRieng = Number(shareInfo.soTien || 0);
+                const userTong = userRieng + (isSelected ? tienChungMoiNguoi : 0);
 
                 return (
                   <div
                     key={tv.id}
-                    className={`flex items-center justify-between p-3 rounded-xl border transition-all ${
+                    className={`flex flex-col sm:flex-row sm:items-center justify-between p-3 rounded-xl border gap-2 transition-all ${
                       isSelected
                         ? 'bg-slate-900/80 border-fuchsia-500/40'
                         : 'bg-slate-950/30 border-slate-800/60 opacity-60'
@@ -457,17 +438,22 @@ export const FormChiPhiKhac: React.FC<FormChiPhiKhacProps> = ({
                         onChange={() => {}}
                         className="w-4 h-4 rounded border-slate-700 bg-slate-900 text-fuchsia-600 focus:ring-fuchsia-500 pointer-events-none"
                       />
-                      <span className={`text-sm font-semibold ${isSelected ? 'text-white' : 'text-slate-400'}`}>
-                        {tv.ten}
-                      </span>
+                      <div>
+                        <span className={`text-sm font-semibold ${isSelected ? 'text-white' : 'text-slate-400'}`}>
+                          {tv.ten}
+                        </span>
+                        {isSelected && (userRieng > 0 || tienChungMoiNguoi > 0) && (
+                          <span className="block text-[11px] text-fuchsia-300 font-mono">
+                            Phần phải chịu: <span className="font-bold text-emerald-400">{formatVND(userTong)}</span>
+                            {tienChungMoiNguoi > 0 && (
+                              <span className="text-slate-500 text-[10px]"> ({formatVND(userRieng)} riêng + {formatVND(tienChungMoiNguoi)} chung)</span>
+                            )}
+                          </span>
+                        )}
+                      </div>
                     </div>
 
-                    <div className="flex items-center gap-2">
-                      {isSelected && Number(tienChung || 0) > 0 && (
-                        <div className="text-[11px] text-amber-400 font-mono bg-amber-950/40 px-2 py-1 rounded border border-amber-500/20 whitespace-nowrap hidden sm:block" title="Phần tiền chung được chia">
-                          +{formatVND(tienChungMoiNguoi)}
-                        </div>
-                      )}
+                    <div className="flex items-center gap-2 self-end sm:self-center">
                       <div className="relative w-36">
                         <input
                           type="number"
@@ -495,67 +481,34 @@ export const FormChiPhiKhac: React.FC<FormChiPhiKhacProps> = ({
           </div>
 
           {/* Người chi trả tiền */}
-          <div className="space-y-3 pt-2 border-t border-slate-800">
+          <div className="space-y-2 pt-2 border-t border-slate-800">
             <div className="flex items-center justify-between">
-              <div>
-                <label className="text-sm font-semibold text-slate-300">
-                  Người chi trả tiền
-                </label>
-                <span className="block text-[11px] text-slate-500">
-                  Ai đứng ra thanh toán tổng số tiền trên
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={handleAddNguoiTra}
-                className="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1 transition-colors cursor-pointer"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                Thêm người trả
-              </button>
+              <label className="text-sm font-semibold text-slate-300">
+                Người chi trả tiền
+              </label>
+              <span className="text-[11px] text-slate-400">
+                (Tự động thanh toán tổng tiền bên trên)
+              </span>
             </div>
 
-            <div className="space-y-2.5">
-              {nguoiTraTien.map((item, idx) => (
-                <div key={idx} className="flex items-center gap-2">
-                  <select
-                    value={item.thanhVienId}
-                    onChange={(e) => handleChangeNguoiTraId(idx, Number(e.target.value))}
-                    className="flex-1 bg-slate-950/60 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500 cursor-pointer"
-                  >
-                    {thanhViens.map((tv) => (
-                      <option key={tv.id} value={tv.id} className="bg-slate-900 text-white">
-                        {tv.ten} (Người trả)
-                      </option>
-                    ))}
-                  </select>
-
-                  <div className="relative flex-1">
-                    <input
-                      type="number"
-                      value={item.soTienDaTra === 0 ? '' : item.soTienDaTra}
-                      onChange={(e) => handleChangeNguoiTraTien(idx, Number(e.target.value))}
-                      placeholder="0"
-                      min="0"
-                      step="1000"
-                      className="w-full bg-slate-950/60 border border-slate-800 rounded-xl pl-3.5 pr-8 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500 font-mono"
-                    />
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-500 font-mono">
-                      đ
-                    </span>
-                  </div>
-
-                  {nguoiTraTien.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveNguoiTra(idx)}
-                      className="p-2.5 text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 rounded-xl transition-colors cursor-pointer"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  )}
-                </div>
-              ))}
+            <div className="flex items-center gap-3">
+              <select
+                value={nguoiTraTien[0]?.thanhVienId || thanhViens[0]?.id || 0}
+                onChange={(e) => {
+                  const id = Number(e.target.value);
+                  setNguoiTraTien([{ thanhVienId: id, soTienDaTra: tongTienChi }]);
+                }}
+                className="flex-1 bg-slate-950/60 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500 cursor-pointer"
+              >
+                {thanhViens.map((tv) => (
+                  <option key={tv.id} value={tv.id} className="bg-slate-900 text-white">
+                    {tv.ten} (Người thanh toán)
+                  </option>
+                ))}
+              </select>
+              <div className="px-4 py-2.5 bg-fuchsia-950/40 border border-fuchsia-500/30 rounded-xl font-mono text-sm font-bold text-fuchsia-300 whitespace-nowrap select-none">
+                {formatVND(tongTienChi)}
+              </div>
             </div>
           </div>
 

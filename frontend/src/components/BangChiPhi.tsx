@@ -292,15 +292,21 @@ export const BangChiPhi: React.FC<BangChiPhiProps> = React.memo(({
                         {item.nguoiAnIds && item.nguoiAnIds.length > 0 ? (
                           item.nguoiAnIds.map((id) => {
                             const detail = item.chiTietNguoiAn?.find((d) => d.thanhVienId === id);
+                            const hasPrivate = detail && detail.soTienRieng !== undefined && detail.soTienRieng > 0;
                             return (
                               <span
                                 key={id}
                                 className="inline-flex items-center gap-1 bg-slate-900 text-slate-300 border border-slate-800 text-[10px] px-1.5 py-0.5 rounded"
                               >
-                                <span>{getTenThanhVien(id)}</span>
+                                <span>{getTenThanhVien(id)}:</span>
                                 {detail && detail.soTien > 0 && (
-                                  <span className="font-mono text-indigo-300 font-semibold">
-                                    ({formatVND(detail.soTien)})
+                                  <span className="font-mono text-emerald-400 font-bold" title="Tổng phần phải chịu">
+                                    {formatVND(detail.soTien)}
+                                  </span>
+                                )}
+                                {hasPrivate && (
+                                  <span className="font-mono text-slate-400 text-[9px]" title="Tiền thức ăn riêng">
+                                    (riêng {formatVND(detail.soTienRieng!)})
                                   </span>
                                 )}
                               </span>
@@ -312,7 +318,7 @@ export const BangChiPhi: React.FC<BangChiPhiProps> = React.memo(({
                       </div>
                       {item.tienChung && Number(item.tienChung) > 0 ? (
                         <div className="mt-1 text-[10px] text-amber-400 font-mono">
-                          Tiền chung: {formatVND(Number(item.tienChung))}
+                          Tiền gia vị chung: {formatVND(Number(item.tienChung))}
                         </div>
                       ) : null}
                     </td>

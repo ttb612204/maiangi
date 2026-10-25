@@ -21,6 +21,7 @@ export interface NguoiTraTien {
 export interface NguoiAnChiTiet {
   thanhVienId: number;
   soTien: number;
+  soTienRieng?: number;
 }
 
 export interface BuaToi {
