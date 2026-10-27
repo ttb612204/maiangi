@@ -350,7 +350,7 @@ export const FormChiPhiKhac: React.FC<FormChiPhiKhacProps> = ({
               <input
                 type="number"
                 min="0"
-                step="1000"
+                step="any"
                 placeholder="0"
                 value={tienChung === 0 ? '' : tienChung}
                 onChange={(e) => setTienChung(Number(e.target.value) || 0)}
@@ -459,7 +459,7 @@ export const FormChiPhiKhac: React.FC<FormChiPhiKhacProps> = ({
                           type="number"
                           placeholder="Tiền riêng"
                           min="0"
-                          step="1000"
+                          step="any"
                           value={shareInfo.soTien === 0 ? '' : shareInfo.soTien}
                           onChange={(e) => handleChangeShareAmount(tv.id, Number(e.target.value))}
                           disabled={!isSelected}

@@ -319,7 +319,7 @@ export const FormNhapTien: React.FC<FormNhapTienProps> = ({
               <input
                 type="number"
                 min="0"
-                step="1000"
+                step="any"
                 placeholder="0"
                 value={tienChung === 0 ? '' : tienChung}
                 onChange={(e) => setTienChung(Number(e.target.value) || 0)}
@@ -429,7 +429,7 @@ export const FormNhapTien: React.FC<FormNhapTienProps> = ({
                           type="number"
                           placeholder="Tiền riêng"
                           min="0"
-                          step="1000"
+                          step="any"
                           value={eaterInfo.soTien === 0 ? '' : eaterInfo.soTien}
                           onChange={(e) => handleChangeEaterAmount(tv.id, Number(e.target.value))}
                           disabled={!isSelected}
