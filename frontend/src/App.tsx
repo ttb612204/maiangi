@@ -21,6 +21,7 @@ import {
 import { DanhSachThanhVien } from './components/DanhSachThanhVien';
 import { BangChiPhi } from './components/BangChiPhi';
 import { TongKetTuan } from './components/TongKetTuan';
+import { TongChiPhiThanhVien } from './components/TongChiPhiThanhVien';
 import { FormNhapTien } from './components/FormNhapTien';
 import { FormChiPhiKhac } from './components/FormChiPhiKhac';
 
@@ -419,6 +420,10 @@ function App() {
             onRefresh={handleRefreshSummary}
             loading={loadingSummary}
             onOpenDetail={handleOpenDetail}
+          />
+          <TongChiPhiThanhVien
+            thanhViens={thanhViens}
+            buaTois={buaTois}
           />
           <DanhSachThanhVien
             thanhViens={thanhViens}
