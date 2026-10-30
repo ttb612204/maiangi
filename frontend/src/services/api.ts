@@ -22,6 +22,7 @@ export interface NguoiAnChiTiet {
   thanhVienId: number;
   soTien: number;
   soTienRieng?: number;
+  cacBuaKem?: BuaKemChiTiet[];
 }
 
 export interface BuaKemChiTiet {

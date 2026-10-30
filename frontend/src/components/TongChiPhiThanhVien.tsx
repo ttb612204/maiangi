@@ -105,6 +105,16 @@ export const TongChiPhiThanhVien: React.FC<TongChiPhiThanhVienProps> = React.mem
             .map((p) => `${getTenThanhVien(p.thanhVienId)} (${formatVND(p.soTienDaTra)})`)
             .join(', ') || 'Chưa rõ';
 
+          // Lấy danh sách bữa kèm riêng của người này nếu có, nếu không thì lấy bữa kèm chung của bữa tối
+          let memberCacBuaKem: BuaKemChiTiet[] = [];
+          if (detailed && Array.isArray(detailed.cacBuaKem) && detailed.cacBuaKem.length > 0) {
+            memberCacBuaKem = detailed.cacBuaKem;
+          } else if (Array.isArray(bt.cacBuaKem) && bt.cacBuaKem.length > 0) {
+            memberCacBuaKem = bt.cacBuaKem;
+          } else if (bt.kemBuaTrua) {
+            memberCacBuaKem = [{ loaiBua: 'trua', ngay: bt.ngayAn, moTa: 'Trưa hôm sau' }];
+          }
+
           danhSachBuaAn.push({
             id: bt.id,
             ngayAn: bt.ngayAn,
@@ -117,7 +127,7 @@ export const TongChiPhiThanhVien: React.FC<TongChiPhiThanhVienProps> = React.mem
             tongTienBuaAn: bt.tongTien,
             nguoiTraText,
             kemBuaTrua: !!bt.kemBuaTrua,
-            cacBuaKem: Array.isArray(bt.cacBuaKem) ? bt.cacBuaKem : (bt.kemBuaTrua ? [{ loaiBua: 'trua', ngay: bt.ngayAn, moTa: 'Trưa hôm sau' }] : []),
+            cacBuaKem: memberCacBuaKem,
           });
         }
       });

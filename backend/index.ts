@@ -75,7 +75,8 @@ app.use(async (req, res, next) => {
 
       ALTER TABLE nguoi_an
       ADD COLUMN IF NOT EXISTS so_tien NUMERIC(12, 2) DEFAULT 0,
-      ADD COLUMN IF NOT EXISTS so_tien_rieng NUMERIC(12, 2) DEFAULT 0;
+      ADD COLUMN IF NOT EXISTS so_tien_rieng NUMERIC(12, 2) DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS cac_bua_kem JSONB DEFAULT '[]'::jsonb;
 
       ALTER TABLE nguoi_chia_chi_phi
       ADD COLUMN IF NOT EXISTS so_tien NUMERIC(12, 2) DEFAULT 0,
@@ -504,21 +505,22 @@ app.post('/api/them-bua-toi', async (req, res) => {
     );
     const buaToiId = insertRes.rows[0].id;
 
-    // Thêm danh sách người ăn kèm số tiền
+    // Thêm danh sách người ăn kèm số tiền và các bữa kèm riêng của từng người
     const chiTietNguoiAn = req.body.chiTietNguoiAn;
     if (Array.isArray(chiTietNguoiAn) && chiTietNguoiAn.length > 0) {
       for (const item of chiTietNguoiAn) {
+        const itemCacBuaKem = JSON.stringify(Array.isArray(item.cacBuaKem) ? item.cacBuaKem : []);
         await client.query(
-          'INSERT INTO nguoi_an (bua_toi_id, thanh_vien_id, so_tien, so_tien_rieng) VALUES ($1, $2, $3, $4)',
-          [buaToiId, Number(item.thanhVienId), Number(item.soTien || 0), Number(item.soTienRieng || 0)]
+          'INSERT INTO nguoi_an (bua_toi_id, thanh_vien_id, so_tien, so_tien_rieng, cac_bua_kem) VALUES ($1, $2, $3, $4, $5)',
+          [buaToiId, Number(item.thanhVienId), Number(item.soTien || 0), Number(item.soTienRieng || 0), itemCacBuaKem]
         );
       }
     } else {
       const perEater = nguoiAnIds.length > 0 ? tongTien / nguoiAnIds.length : 0;
       for (const tvId of nguoiAnIds) {
         await client.query(
-          'INSERT INTO nguoi_an (bua_toi_id, thanh_vien_id, so_tien, so_tien_rieng) VALUES ($1, $2, $3, $4)',
-          [buaToiId, Number(tvId), perEater, 0]
+          'INSERT INTO nguoi_an (bua_toi_id, thanh_vien_id, so_tien, so_tien_rieng, cac_bua_kem) VALUES ($1, $2, $3, $4, $5)',
+          [buaToiId, Number(tvId), perEater, 0, '[]']
         );
       }
     }
@@ -678,7 +680,7 @@ app.get('/api/danh-sach-bua-toi', async (req, res) => {
     `, params);
 
     // 2. SELECT relations for all meals/expenses
-    const eatersRes = await pool.query('SELECT bua_toi_id, thanh_vien_id, COALESCE(so_tien, 0) as so_tien, COALESCE(so_tien_rieng, 0) as so_tien_rieng FROM nguoi_an');
+    const eatersRes = await pool.query("SELECT bua_toi_id, thanh_vien_id, COALESCE(so_tien, 0) as so_tien, COALESCE(so_tien_rieng, 0) as so_tien_rieng, COALESCE(cac_bua_kem, '[]'::jsonb) as cac_bua_kem FROM nguoi_an");
     const payersRes = await pool.query('SELECT bua_toi_id, thanh_vien_id, so_tien_da_tra FROM nguoi_tra_tien');
     const cpEatersRes = await pool.query('SELECT chi_phi_id, thanh_vien_id, COALESCE(so_tien, 0) as so_tien, COALESCE(so_tien_rieng, 0) as so_tien_rieng FROM nguoi_chia_chi_phi');
     const cpPayersRes = await pool.query('SELECT chi_phi_id, thanh_vien_id, so_tien_da_tra FROM nguoi_tra_chi_phi');
@@ -692,6 +694,7 @@ app.get('/api/danh-sach-bua-toi', async (req, res) => {
           thanhVienId: Number(r.thanh_vien_id),
           soTien: Number(r.so_tien || 0),
           soTienRieng: Number(r.so_tien_rieng || 0),
+          cacBuaKem: Array.isArray(r.cac_bua_kem) ? r.cac_bua_kem : [],
         }));
       const nguoiAnIds = chiTietNguoiAn.map(r => r.thanhVienId);
       const nguoiTraTien = payersRes.rows
@@ -795,7 +798,7 @@ app.get(['/api/tong-ket-tuan', '/api/tong-ket'], async (req, res) => {
     `, queryParams);
 
     // 3. Lấy tất cả quan hệ người ăn và người trả
-    const eatersRes = await pool.query('SELECT bua_toi_id, thanh_vien_id, COALESCE(so_tien, 0) as so_tien, COALESCE(so_tien_rieng, 0) as so_tien_rieng FROM nguoi_an');
+    const eatersRes = await pool.query("SELECT bua_toi_id, thanh_vien_id, COALESCE(so_tien, 0) as so_tien, COALESCE(so_tien_rieng, 0) as so_tien_rieng, COALESCE(cac_bua_kem, '[]'::jsonb) as cac_bua_kem FROM nguoi_an");
     const payersRes = await pool.query('SELECT bua_toi_id, thanh_vien_id, so_tien_da_tra FROM nguoi_tra_tien');
     const cpEatersRes = await pool.query('SELECT chi_phi_id, thanh_vien_id, COALESCE(so_tien, 0) as so_tien, COALESCE(so_tien_rieng, 0) as so_tien_rieng FROM nguoi_chia_chi_phi');
     const cpPayersRes = await pool.query('SELECT chi_phi_id, thanh_vien_id, so_tien_da_tra FROM nguoi_tra_chi_phi');
@@ -808,6 +811,7 @@ app.get(['/api/tong-ket-tuan', '/api/tong-ket'], async (req, res) => {
           thanhVienId: Number(r.thanh_vien_id),
           soTien: Number(r.so_tien || 0),
           soTienRieng: Number(r.so_tien_rieng || 0),
+          cacBuaKem: Array.isArray(r.cac_bua_kem) ? r.cac_bua_kem : [],
         }));
       const nguoiAnIds = chiTietNguoiAn.map(r => r.thanhVienId);
       const nguoiTraTien = payersRes.rows
