@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { X, Trash2, Save, Loader2, AlertCircle } from 'lucide-react';
-import { BuaToi, NguoiTraTien, ThanhVien, NguoiAnChiTiet } from '../services/api';
+import { X, Trash2, Save, Loader2, AlertCircle, Plus, Sun, Moon } from 'lucide-react';
+import { BuaToi, NguoiTraTien, ThanhVien, NguoiAnChiTiet, BuaKemChiTiet } from '../services/api';
 
 export interface DayConfig {
   thu: string;
@@ -59,7 +59,7 @@ export const FormNhapTien: React.FC<FormNhapTienProps> = ({
 }) => {
   const [selectedDate, setSelectedDate] = useState<string>(getTodayString());
   const [tienChung, setTienChung] = useState<number>(0);
-  const [kemBuaTrua, setKemBuaTrua] = useState<boolean>(false);
+  const [cacBuaKem, setCacBuaKem] = useState<BuaKemChiTiet[]>([]);
   // Quản lý từng người ăn: id -> { isEating: boolean, soTien: number }
   const [eaterMap, setEaterMap] = useState<Record<number, { isEating: boolean; soTien: number }>>({});
   const [nguoiTraTien, setNguoiTraTien] = useState<NguoiTraTien[]>([]);
@@ -87,7 +87,14 @@ export const FormNhapTien: React.FC<FormNhapTienProps> = ({
       setSelectedDate(buaToi.ngayAn.split('T')[0]);
       const savedTienChung = Number(buaToi.tienChung || 0);
       setTienChung(savedTienChung);
-      setKemBuaTrua(!!buaToi.kemBuaTrua);
+      if (Array.isArray(buaToi.cacBuaKem) && buaToi.cacBuaKem.length > 0) {
+        setCacBuaKem(buaToi.cacBuaKem);
+      } else if (buaToi.kemBuaTrua) {
+        // Tương thích ngược
+        setCacBuaKem([{ loaiBua: 'trua', ngay: buaToi.ngayAn.split('T')[0], moTa: 'Trưa hôm sau' }]);
+      } else {
+        setCacBuaKem([]);
+      }
       
       const newEaterMap: Record<number, { isEating: boolean; soTien: number }> = {};
       const buaToiEaterIds = buaToi.nguoiAnIds || [];
@@ -111,7 +118,7 @@ export const FormNhapTien: React.FC<FormNhapTienProps> = ({
     } else {
       setSelectedDate(day ? day.dateString : getTodayString());
       setTienChung(0);
-      setKemBuaTrua(false);
+      setCacBuaKem([]);
       
       const newEaterMap: Record<number, { isEating: boolean; soTien: number }> = {};
       thanhViens.forEach((tv) => {
@@ -235,7 +242,8 @@ export const FormNhapTien: React.FC<FormNhapTienProps> = ({
         thuTrongTuan: getDayOfWeekVietnamese(selectedDate),
         tongTien: tongTienBuaAn,
         tienChung: Number(tienChung || 0),
-        kemBuaTrua,
+        kemBuaTrua: cacBuaKem.length > 0,
+        cacBuaKem,
         ngayAn: selectedDate,
         nguoiAnIds: activeEaters.map((e) => e.thanhVienId),
         chiTietNguoiAn: activeEaters,
@@ -355,42 +363,140 @@ export const FormNhapTien: React.FC<FormNhapTienProps> = ({
             </div>
           </div>
 
-          {/* Tùy chọn nấu ăn luôn cho cả bữa trưa hôm sau (Tính là 2 bữa ăn) */}
-          <div 
-            onClick={() => setKemBuaTrua(!kemBuaTrua)}
-            className={`p-3.5 rounded-xl border transition-all cursor-pointer flex items-center justify-between gap-3 ${
-              kemBuaTrua 
-                ? 'bg-amber-500/10 border-amber-500/40 text-amber-200' 
-                : 'bg-slate-950/40 border-slate-800/80 hover:border-slate-700 text-slate-300'
-            }`}
-          >
-            <div className="flex items-center gap-3">
-              <input
-                type="checkbox"
-                id="kemBuaTruaCheckbox"
-                checked={kemBuaTrua}
-                onChange={(e) => setKemBuaTrua(e.target.checked)}
-                className="w-4 h-4 rounded text-amber-500 focus:ring-amber-400 focus:ring-offset-slate-900 border-slate-700 bg-slate-900 cursor-pointer"
-                onClick={(e) => e.stopPropagation()}
-              />
+          {/* Mở rộng: Nấu ăn dùng chung cho nhiều bữa (Bữa trưa, bữa tối các ngày tiếp theo) */}
+          <div className="p-4 rounded-xl border border-amber-500/30 bg-amber-950/20 space-y-3">
+            <div className="flex items-center justify-between">
               <div>
-                <label 
-                  htmlFor="kemBuaTruaCheckbox" 
-                  className="text-sm font-bold block cursor-pointer flex items-center gap-1.5"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  🍱 Ăn luôn cho trưa hôm sau (Tính là 2 bữa)
+                <label className="text-sm font-bold text-amber-300 flex items-center gap-1.5">
+                  🍱 Thức ăn dùng thêm cho các bữa khác (Tính thêm số bữa ăn)
                 </label>
-                <span className="text-[11px] text-slate-400 block mt-0.5">
-                  Thức ăn tối dư dùng tiếp cho bữa trưa hôm sau. Tiền không đổi, nhưng số bữa thống kê sẽ tính là 2 bữa (Tối + Trưa).
-                </span>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Mua đồ 1 lần nhưng ăn cho cả trưa hôm sau hoặc tối hôm sau... Tiền vẫn giữ nguyên, hệ thống sẽ cộng thêm số bữa tương ứng vào thống kê.
+                </p>
               </div>
+              <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 font-mono shrink-0">
+                Tổng: {1 + cacBuaKem.length} bữa ăn
+              </span>
             </div>
-            <span className={`text-[11px] font-bold px-2 py-1 rounded-md shrink-0 ${
-              kemBuaTrua ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : 'bg-slate-800 text-slate-500'
-            }`}>
-              {kemBuaTrua ? '+ 1 Bữa trưa' : '1 Bữa tối'}
-            </span>
+
+            {/* Danh sách các bữa kèm đã thêm */}
+            {cacBuaKem.length > 0 && (
+              <div className="space-y-2 pt-1">
+                {cacBuaKem.map((bk, idx) => (
+                  <div 
+                    key={idx}
+                    className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 p-2.5 rounded-lg bg-slate-900/80 border border-slate-800"
+                  >
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs font-bold text-slate-400 font-mono">
+                        #{idx + 1}
+                      </span>
+                      {/* Chọn loại bữa */}
+                      <select
+                        value={bk.loaiBua}
+                        onChange={(e) => {
+                          const val = e.target.value as 'trua' | 'toi';
+                          setCacBuaKem(prev => prev.map((item, i) => i === idx ? { ...item, loaiBua: val } : item));
+                        }}
+                        className="bg-slate-950 border border-slate-700 text-xs text-white rounded-lg px-2.5 py-1 font-medium focus:outline-none focus:border-amber-500 cursor-pointer"
+                      >
+                        <option value="trua">☀️ Bữa trưa</option>
+                        <option value="toi">🌙 Bữa tối</option>
+                      </select>
+
+                      {/* Chọn ngày của bữa đó */}
+                      <input
+                        type="date"
+                        value={bk.ngay}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setCacBuaKem(prev => prev.map((item, i) => i === idx ? { ...item, ngay: val } : item));
+                        }}
+                        style={{ colorScheme: 'dark' }}
+                        className="bg-slate-950 border border-slate-700 text-xs text-white rounded-lg px-2 py-1 font-mono focus:outline-none focus:border-amber-500 cursor-pointer"
+                      />
+                      <span className="text-[11px] font-semibold text-amber-400/90 font-mono">
+                        {getDayOfWeekVietnamese(bk.ngay)}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2 justify-end">
+                      <input
+                        type="text"
+                        placeholder="Ghi chú (VD: trưa mai, ăn thừa...)"
+                        value={bk.moTa || ''}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setCacBuaKem(prev => prev.map((item, i) => i === idx ? { ...item, moTa: val } : item));
+                        }}
+                        className="bg-slate-950 border border-slate-700 text-xs text-slate-200 rounded-lg px-2 py-1 flex-1 sm:w-44 focus:outline-none focus:border-amber-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setCacBuaKem(prev => prev.filter((_, i) => i !== idx))}
+                        className="p-1 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
+                        title="Xóa bữa kèm này"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Các nút bấm thêm nhanh bữa */}
+            <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-slate-800/80">
+              {/* Thêm trưa hôm sau (thường gặp nhất) */}
+              <button
+                type="button"
+                onClick={() => {
+                  try {
+                    const d = new Date(selectedDate);
+                    d.setDate(d.getDate() + 1);
+                    const nextDate = d.toISOString().split('T')[0];
+                    setCacBuaKem(prev => [...prev, { loaiBua: 'trua', ngay: nextDate, moTa: 'Trưa hôm sau' }]);
+                  } catch {
+                    setCacBuaKem(prev => [...prev, { loaiBua: 'trua', ngay: selectedDate, moTa: 'Bữa trưa' }]);
+                  }
+                }}
+                className="px-2.5 py-1.5 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer"
+              >
+                <Sun className="w-3.5 h-3.5" />
+                + Trưa hôm sau
+              </button>
+
+              {/* Thêm bữa trưa tùy chọn */}
+              <button
+                type="button"
+                onClick={() => {
+                  setCacBuaKem(prev => [...prev, { loaiBua: 'trua', ngay: selectedDate, moTa: '' }]);
+                }}
+                className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                + Bữa trưa khác
+              </button>
+
+              {/* Thêm bữa tối hôm sau / tùy chọn */}
+              <button
+                type="button"
+                onClick={() => {
+                  try {
+                    const d = new Date(selectedDate);
+                    d.setDate(d.getDate() + 1);
+                    const nextDate = d.toISOString().split('T')[0];
+                    setCacBuaKem(prev => [...prev, { loaiBua: 'toi', ngay: nextDate, moTa: 'Tối hôm sau' }]);
+                  } catch {
+                    setCacBuaKem(prev => [...prev, { loaiBua: 'toi', ngay: selectedDate, moTa: 'Bữa tối' }]);
+                  }
+                }}
+                className="px-2.5 py-1.5 rounded-lg bg-indigo-500/15 hover:bg-indigo-500/25 border border-indigo-500/30 text-indigo-300 text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer"
+              >
+                <Moon className="w-3.5 h-3.5" />
+                + Bữa tối hôm sau
+              </button>
+            </div>
           </div>
 
           {/* Danh sách người ăn & số tiền từng người */}

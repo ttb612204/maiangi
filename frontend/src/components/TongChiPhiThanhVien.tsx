@@ -6,7 +6,7 @@ import {
   X, 
   ChefHat
 } from 'lucide-react';
-import { BuaToi, ThanhVien } from '../services/api';
+import { BuaToi, ThanhVien, BuaKemChiTiet } from '../services/api';
 
 interface TongChiPhiThanhVienProps {
   thanhViens: ThanhVien[];
@@ -25,6 +25,7 @@ interface BuaAnCuaNguoi {
   tongTienBuaAn: number;
   nguoiTraText: string;
   kemBuaTrua?: boolean;
+  cacBuaKem?: BuaKemChiTiet[];
 }
 
 export const TongChiPhiThanhVien: React.FC<TongChiPhiThanhVienProps> = React.memo(({
@@ -116,6 +117,7 @@ export const TongChiPhiThanhVien: React.FC<TongChiPhiThanhVienProps> = React.mem
             tongTienBuaAn: bt.tongTien,
             nguoiTraText,
             kemBuaTrua: !!bt.kemBuaTrua,
+            cacBuaKem: Array.isArray(bt.cacBuaKem) ? bt.cacBuaKem : (bt.kemBuaTrua ? [{ loaiBua: 'trua', ngay: bt.ngayAn, moTa: 'Trưa hôm sau' }] : []),
           });
         }
       });
@@ -123,16 +125,31 @@ export const TongChiPhiThanhVien: React.FC<TongChiPhiThanhVienProps> = React.mem
       // Sắp xếp ngày mới nhất lên trước
       danhSachBuaAn.sort((a, b) => new Date(b.ngayAn).getTime() - new Date(a.ngayAn).getTime());
 
-      // Tính tổng số suất/bữa ăn: nếu bữa tối có kèm bữa trưa thì tính 2 bữa
+      // Tính tổng số suất/bữa ăn: 1 bữa chính + các bữa kèm thêm
       const soBuaAn = danhSachBuaAn.reduce((acc, item) => {
         if (item.loai !== 'chi_phi_khac') {
-          return acc + (item.kemBuaTrua ? 2 : 1);
+          const soBuaKemThem = item.cacBuaKem?.length || (item.kemBuaTrua ? 1 : 0);
+          return acc + 1 + soBuaKemThem;
         }
         return acc + 1; // Chi phí khác tính 1 khoản
       }, 0);
 
-      const soBuaToi = danhSachBuaAn.filter(i => i.loai !== 'chi_phi_khac').length;
-      const soBuaTrua = danhSachBuaAn.filter(i => i.loai !== 'chi_phi_khac' && i.kemBuaTrua).length;
+      // Thống kê phân loại bữa
+      let countToi = 0;
+      let countTrua = 0;
+      danhSachBuaAn.forEach(item => {
+        if (item.loai !== 'chi_phi_khac') {
+          countToi += 1; // bữa tối chính
+          if (Array.isArray(item.cacBuaKem) && item.cacBuaKem.length > 0) {
+            item.cacBuaKem.forEach(bk => {
+              if (bk.loaiBua === 'trua') countTrua += 1;
+              else if (bk.loaiBua === 'toi') countToi += 1;
+            });
+          } else if (item.kemBuaTrua) {
+            countTrua += 1;
+          }
+        }
+      });
 
       return {
         id: tv.id,
@@ -141,8 +158,8 @@ export const TongChiPhiThanhVien: React.FC<TongChiPhiThanhVienProps> = React.mem
         tongTienRieng,
         tongTienChung,
         soBuaAn,
-        soBuaToi,
-        soBuaTrua,
+        soBuaToi: countToi,
+        soBuaTrua: countTrua,
         danhSachBuaAn,
       };
     });
@@ -381,14 +398,20 @@ export const TongChiPhiThanhVien: React.FC<TongChiPhiThanhVienProps> = React.mem
                                     <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 whitespace-nowrap">
                                       Bữa tối
                                     </span>
-                                    {bua.kemBuaTrua && (
+                                    {bua.cacBuaKem && bua.cacBuaKem.length > 0 ? (
+                                      bua.cacBuaKem.map((bk, kIdx) => (
+                                        <span key={kIdx} className="px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/30 whitespace-nowrap flex items-center gap-1">
+                                          🍱 {bk.loaiBua === 'trua' ? 'Trưa' : 'Tối'} {formatDateDisplay(bk.ngay)} {bk.moTa ? `(${bk.moTa})` : ''}
+                                        </span>
+                                      ))
+                                    ) : bua.kemBuaTrua ? (
                                       <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/30 whitespace-nowrap flex items-center gap-1">
                                         🍱 + 1 Bữa trưa (2 bữa)
                                       </span>
-                                    )}
+                                    ) : null}
                                   </div>
                                   <span className="text-slate-400 text-[11px] block">
-                                    (Tổng bữa: {formatVND(bua.tongTienBuaAn)})
+                                    (Tổng tiền mua: {formatVND(bua.tongTienBuaAn)} / {1 + (bua.cacBuaKem?.length || (bua.kemBuaTrua ? 1 : 0))} bữa)
                                   </span>
                                 </div>
                               )}

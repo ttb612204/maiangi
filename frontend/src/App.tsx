@@ -377,19 +377,35 @@ function App() {
             Tổng số bữa ăn
           </span>
           {(() => {
-            const dinnerCount = buaTois.filter(b => b.loai !== 'chi_phi_khac').length;
-            const lunchCount = buaTois.filter(b => b.loai !== 'chi_phi_khac' && b.kemBuaTrua).length;
-            const totalMeals = dinnerCount + lunchCount;
+            let totalMeals = 0;
+            let dinnerCount = 0;
+            let lunchCount = 0;
+
+            buaTois.filter(b => b.loai !== 'chi_phi_khac').forEach(b => {
+              dinnerCount += 1;
+              totalMeals += 1;
+              if (Array.isArray(b.cacBuaKem) && b.cacBuaKem.length > 0) {
+                b.cacBuaKem.forEach(bk => {
+                  totalMeals += 1;
+                  if (bk.loaiBua === 'trua') lunchCount += 1;
+                  else if (bk.loaiBua === 'toi') dinnerCount += 1;
+                });
+              } else if (b.kemBuaTrua) {
+                totalMeals += 1;
+                lunchCount += 1;
+              }
+            });
+
             return (
               <div>
                 <span className="text-lg md:text-xl font-extrabold text-indigo-300 font-mono">
                   {totalMeals} bữa
                 </span>
-                {lunchCount > 0 && (
+                {totalMeals > dinnerCount || lunchCount > 0 ? (
                   <span className="text-[10px] text-amber-400 block font-medium">
                     ({dinnerCount} tối + {lunchCount} trưa)
                   </span>
-                )}
+                ) : null}
               </div>
             );
           })()}

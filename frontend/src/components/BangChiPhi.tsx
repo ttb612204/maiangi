@@ -271,10 +271,16 @@ export const BangChiPhi: React.FC<BangChiPhiProps> = React.memo(({
                         >
                           {isExpense ? 'Chi phí khác' : 'Bữa tối'}
                         </span>
-                        {!isExpense && item.kemBuaTrua && (
-                          <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/30 shrink-0" title="Đã nấu ăn cho cả bữa trưa hôm sau">
-                            🍱 + Bữa trưa (2 bữa)
-                          </span>
+                        {!isExpense && (
+                          item.cacBuaKem && item.cacBuaKem.length > 0 ? (
+                            <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/30 shrink-0" title={`Gồm ${1 + item.cacBuaKem.length} bữa ăn`}>
+                              🍱 {1 + item.cacBuaKem.length} bữa (+{item.cacBuaKem.map(b => (b.loaiBua === 'trua' ? 'trưa' : 'tối')).join(', ')})
+                            </span>
+                          ) : item.kemBuaTrua ? (
+                            <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/30 shrink-0" title="Đã nấu ăn cho cả bữa trưa hôm sau">
+                              🍱 + Bữa trưa (2 bữa)
+                            </span>
+                          ) : null
                         )}
                         {isExpense && item.moTa && (
                           <span className="text-slate-300 font-medium truncate max-w-[140px]" title={item.moTa}>

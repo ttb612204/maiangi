@@ -24,12 +24,19 @@ export interface NguoiAnChiTiet {
   soTienRieng?: number;
 }
 
+export interface BuaKemChiTiet {
+  loaiBua: 'trua' | 'toi';
+  ngay: string;
+  moTa?: string;
+}
+
 export interface BuaToi {
   id?: number;
   thuTrongTuan: string;
   tongTien: number;
   tienChung?: number;
   kemBuaTrua?: boolean;
+  cacBuaKem?: BuaKemChiTiet[];
   ngayAn: string;
   nguoiAnIds: number[];
   chiTietNguoiAn?: NguoiAnChiTiet[];
