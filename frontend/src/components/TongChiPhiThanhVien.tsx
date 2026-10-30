@@ -24,6 +24,7 @@ interface BuaAnCuaNguoi {
   tongTienPhanMinh: number;
   tongTienBuaAn: number;
   nguoiTraText: string;
+  kemBuaTrua?: boolean;
 }
 
 export const TongChiPhiThanhVien: React.FC<TongChiPhiThanhVienProps> = React.memo(({
@@ -114,6 +115,7 @@ export const TongChiPhiThanhVien: React.FC<TongChiPhiThanhVienProps> = React.mem
             tongTienPhanMinh: soTienTong,
             tongTienBuaAn: bt.tongTien,
             nguoiTraText,
+            kemBuaTrua: !!bt.kemBuaTrua,
           });
         }
       });
@@ -121,13 +123,26 @@ export const TongChiPhiThanhVien: React.FC<TongChiPhiThanhVienProps> = React.mem
       // Sắp xếp ngày mới nhất lên trước
       danhSachBuaAn.sort((a, b) => new Date(b.ngayAn).getTime() - new Date(a.ngayAn).getTime());
 
+      // Tính tổng số suất/bữa ăn: nếu bữa tối có kèm bữa trưa thì tính 2 bữa
+      const soBuaAn = danhSachBuaAn.reduce((acc, item) => {
+        if (item.loai !== 'chi_phi_khac') {
+          return acc + (item.kemBuaTrua ? 2 : 1);
+        }
+        return acc + 1; // Chi phí khác tính 1 khoản
+      }, 0);
+
+      const soBuaToi = danhSachBuaAn.filter(i => i.loai !== 'chi_phi_khac').length;
+      const soBuaTrua = danhSachBuaAn.filter(i => i.loai !== 'chi_phi_khac' && i.kemBuaTrua).length;
+
       return {
         id: tv.id,
         ten: tv.ten,
         tongTienAn,
         tongTienRieng,
         tongTienChung,
-        soBuaAn: danhSachBuaAn.length,
+        soBuaAn,
+        soBuaToi,
+        soBuaTrua,
         danhSachBuaAn,
       };
     });
@@ -201,8 +216,11 @@ export const TongChiPhiThanhVien: React.FC<TongChiPhiThanhVienProps> = React.mem
                           <span className="text-base font-bold text-white group-hover:text-amber-300 transition-colors truncate">
                             {item.ten}
                           </span>
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-800 text-slate-400 border border-slate-700/60">
-                            {item.soBuaAn} bữa
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-800 text-slate-300 border border-slate-700/60 flex items-center gap-1">
+                            <span>{item.soBuaAn} bữa</span>
+                            {item.soBuaTrua > 0 && (
+                              <span className="text-amber-400 font-normal">({item.soBuaToi} tối + {item.soBuaTrua} trưa)</span>
+                            )}
                           </span>
                         </div>
                         <div className="flex items-center gap-2 text-[11px] text-slate-400 mt-1">
@@ -278,6 +296,11 @@ export const TongChiPhiThanhVien: React.FC<TongChiPhiThanhVienProps> = React.mem
                   <Calendar className="w-4 h-4 text-indigo-400" />
                   {selectedMemberData.soBuaAn} bữa
                 </span>
+                {selectedMemberData.soBuaTrua > 0 && (
+                  <span className="text-[10px] text-amber-400 block mt-0.5 font-medium">
+                    ({selectedMemberData.soBuaToi} tối + {selectedMemberData.soBuaTrua} trưa hôm sau)
+                  </span>
+                )}
               </div>
 
               <div className="bg-slate-900/60 border border-slate-800/80 rounded-xl p-3">
@@ -353,11 +376,18 @@ export const TongChiPhiThanhVien: React.FC<TongChiPhiThanhVienProps> = React.mem
                                   </span>
                                 </div>
                               ) : (
-                                <div className="flex items-center gap-1.5">
-                                  <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 whitespace-nowrap">
-                                    Bữa tối
-                                  </span>
-                                  <span className="text-slate-400 text-[11px]">
+                                <div className="space-y-1">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 whitespace-nowrap">
+                                      Bữa tối
+                                    </span>
+                                    {bua.kemBuaTrua && (
+                                      <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/30 whitespace-nowrap flex items-center gap-1">
+                                        🍱 + 1 Bữa trưa (2 bữa)
+                                      </span>
+                                    )}
+                                  </div>
+                                  <span className="text-slate-400 text-[11px] block">
                                     (Tổng bữa: {formatVND(bua.tongTienBuaAn)})
                                   </span>
                                 </div>

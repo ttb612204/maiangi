@@ -82,7 +82,8 @@ app.use(async (req, res, next) => {
       ADD COLUMN IF NOT EXISTS so_tien_rieng NUMERIC(12, 2) DEFAULT 0;
 
       ALTER TABLE bua_toi
-      ADD COLUMN IF NOT EXISTS tien_chung NUMERIC(12, 2) DEFAULT 0;
+      ADD COLUMN IF NOT EXISTS tien_chung NUMERIC(12, 2) DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS kem_bua_trua BOOLEAN DEFAULT FALSE;
 
       ALTER TABLE chi_phi_khac
       ADD COLUMN IF NOT EXISTS tien_chung NUMERIC(12, 2) DEFAULT 0;
@@ -453,7 +454,7 @@ app.delete('/api/xoa-thanh-vien/:id', async (req, res) => {
 app.post('/api/them-bua-toi', async (req, res) => {
   const client = await pool.connect();
   try {
-    const { id, tongTien, ngayAn, nguoiAnIds, nguoiTraTien, tienChung } = req.body;
+    const { id, tongTien, ngayAn, nguoiAnIds, nguoiTraTien, tienChung, kemBuaTrua } = req.body;
     let thuTrongTuan = req.body.thuTrongTuan;
     if (!thuTrongTuan && ngayAn) {
       thuTrongTuan = getThuVietnamese(ngayAn);
@@ -486,10 +487,10 @@ app.post('/api/them-bua-toi', async (req, res) => {
       }
     }
 
-    // Thêm bữa tối mới kèm tiền chung
+    // Thêm bữa tối mới kèm tiền chung và cờ kèm bữa trưa
     const insertRes = await client.query(
-      'INSERT INTO bua_toi (thu_trong_tuan, tong_tien, ngay_an, tien_chung) VALUES ($1, $2, $3, $4) RETURNING id',
-      [thuTrongTuan, tongTien, dateObj, Number(tienChung || 0)]
+      'INSERT INTO bua_toi (thu_trong_tuan, tong_tien, ngay_an, tien_chung, kem_bua_trua) VALUES ($1, $2, $3, $4, $5) RETURNING id',
+      [thuTrongTuan, tongTien, dateObj, Number(tienChung || 0), !!kemBuaTrua]
     );
     const buaToiId = insertRes.rows[0].id;
 
@@ -527,6 +528,7 @@ app.post('/api/them-bua-toi', async (req, res) => {
       thuTrongTuan,
       tongTien,
       tienChung: Number(tienChung || 0),
+      kemBuaTrua: !!kemBuaTrua,
       ngayAn,
       nguoiAnIds,
       nguoiTraTien
@@ -653,7 +655,7 @@ app.get('/api/danh-sach-bua-toi', async (req, res) => {
 
     // 1. SELECT raw dinners and expenses
     const dinnersRes = await pool.query(`
-      SELECT b.id, b.thu_trong_tuan as "thuTrongTuan", b.tong_tien as "tongTien", b.ngay_an as "ngayAn", COALESCE(b.tien_chung, 0) as "tienChung"
+      SELECT b.id, b.thu_trong_tuan as "thuTrongTuan", b.tong_tien as "tongTien", b.ngay_an as "ngayAn", COALESCE(b.tien_chung, 0) as "tienChung", COALESCE(b.kem_bua_trua, false) as "kemBuaTrua"
       FROM bua_toi b
       ${whereClauseDinner}
     `, params);
@@ -693,6 +695,7 @@ app.get('/api/danh-sach-bua-toi', async (req, res) => {
         thuTrongTuan: row.thuTrongTuan || '',
         tongTien: Number(row.tongTien),
         tienChung: Number(row.tienChung || 0),
+        kemBuaTrua: !!row.kemBuaTrua,
         ngayAn: row.ngayAn,
         loai: 'bua_toi',
         moTa: '',
@@ -768,7 +771,7 @@ app.get(['/api/tong-ket-tuan', '/api/tong-ket'], async (req, res) => {
     }
 
     const dinnersRes = await pool.query(`
-      SELECT b.id, b.thu_trong_tuan as "thuTrongTuan", b.tong_tien as "tongTien", b.ngay_an as "ngayAn", COALESCE(b.tien_chung, 0) as "tienChung"
+      SELECT b.id, b.thu_trong_tuan as "thuTrongTuan", b.tong_tien as "tongTien", b.ngay_an as "ngayAn", COALESCE(b.tien_chung, 0) as "tienChung", COALESCE(b.kem_bua_trua, false) as "kemBuaTrua"
       FROM bua_toi b
       ${whereClauseDinner}
     `, queryParams);
@@ -807,6 +810,7 @@ app.get(['/api/tong-ket-tuan', '/api/tong-ket'], async (req, res) => {
         thuTrongTuan: row.thuTrongTuan || '',
         tongTien: Number(row.tongTien),
         tienChung: Number(row.tienChung || 0),
+        kemBuaTrua: !!row.kemBuaTrua,
         ngayAn: row.ngayAn,
         loai: 'bua_toi',
         moTa: '',

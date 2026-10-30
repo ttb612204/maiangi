@@ -261,7 +261,7 @@ export const BangChiPhi: React.FC<BangChiPhiProps> = React.memo(({
 
                     {/* Khoản Chi / Loại */}
                     <td className="py-3 px-4">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span
                           className={`px-2 py-0.5 rounded text-[10px] font-semibold tracking-wide shrink-0 ${
                             isExpense
@@ -271,6 +271,11 @@ export const BangChiPhi: React.FC<BangChiPhiProps> = React.memo(({
                         >
                           {isExpense ? 'Chi phí khác' : 'Bữa tối'}
                         </span>
+                        {!isExpense && item.kemBuaTrua && (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/30 shrink-0" title="Đã nấu ăn cho cả bữa trưa hôm sau">
+                            🍱 + Bữa trưa (2 bữa)
+                          </span>
+                        )}
                         {isExpense && item.moTa && (
                           <span className="text-slate-300 font-medium truncate max-w-[140px]" title={item.moTa}>
                             {item.moTa}

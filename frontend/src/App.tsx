@@ -374,11 +374,25 @@ function App() {
 
         <div className="bg-slate-900/40 border border-slate-800/80 rounded-2xl p-4 shadow-sm backdrop-blur-sm">
           <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block mb-1">
-            Số bữa ăn tối
+            Tổng số bữa ăn
           </span>
-          <span className="text-lg md:text-xl font-extrabold text-indigo-300 font-mono">
-            {buaTois.filter(b => b.loai !== 'chi_phi_khac').length} bữa
-          </span>
+          {(() => {
+            const dinnerCount = buaTois.filter(b => b.loai !== 'chi_phi_khac').length;
+            const lunchCount = buaTois.filter(b => b.loai !== 'chi_phi_khac' && b.kemBuaTrua).length;
+            const totalMeals = dinnerCount + lunchCount;
+            return (
+              <div>
+                <span className="text-lg md:text-xl font-extrabold text-indigo-300 font-mono">
+                  {totalMeals} bữa
+                </span>
+                {lunchCount > 0 && (
+                  <span className="text-[10px] text-amber-400 block font-medium">
+                    ({dinnerCount} tối + {lunchCount} trưa)
+                  </span>
+                )}
+              </div>
+            );
+          })()}
         </div>
 
         <div className="bg-slate-900/40 border border-slate-800/80 rounded-2xl p-4 shadow-sm backdrop-blur-sm">

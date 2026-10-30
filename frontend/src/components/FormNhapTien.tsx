@@ -59,6 +59,7 @@ export const FormNhapTien: React.FC<FormNhapTienProps> = ({
 }) => {
   const [selectedDate, setSelectedDate] = useState<string>(getTodayString());
   const [tienChung, setTienChung] = useState<number>(0);
+  const [kemBuaTrua, setKemBuaTrua] = useState<boolean>(false);
   // Quản lý từng người ăn: id -> { isEating: boolean, soTien: number }
   const [eaterMap, setEaterMap] = useState<Record<number, { isEating: boolean; soTien: number }>>({});
   const [nguoiTraTien, setNguoiTraTien] = useState<NguoiTraTien[]>([]);
@@ -86,6 +87,7 @@ export const FormNhapTien: React.FC<FormNhapTienProps> = ({
       setSelectedDate(buaToi.ngayAn.split('T')[0]);
       const savedTienChung = Number(buaToi.tienChung || 0);
       setTienChung(savedTienChung);
+      setKemBuaTrua(!!buaToi.kemBuaTrua);
       
       const newEaterMap: Record<number, { isEating: boolean; soTien: number }> = {};
       const buaToiEaterIds = buaToi.nguoiAnIds || [];
@@ -109,6 +111,7 @@ export const FormNhapTien: React.FC<FormNhapTienProps> = ({
     } else {
       setSelectedDate(day ? day.dateString : getTodayString());
       setTienChung(0);
+      setKemBuaTrua(false);
       
       const newEaterMap: Record<number, { isEating: boolean; soTien: number }> = {};
       thanhViens.forEach((tv) => {
@@ -232,6 +235,7 @@ export const FormNhapTien: React.FC<FormNhapTienProps> = ({
         thuTrongTuan: getDayOfWeekVietnamese(selectedDate),
         tongTien: tongTienBuaAn,
         tienChung: Number(tienChung || 0),
+        kemBuaTrua,
         ngayAn: selectedDate,
         nguoiAnIds: activeEaters.map((e) => e.thanhVienId),
         chiTietNguoiAn: activeEaters,
@@ -349,6 +353,44 @@ export const FormNhapTien: React.FC<FormNhapTienProps> = ({
                 {soNguoiAn} người tham gia
               </span>
             </div>
+          </div>
+
+          {/* Tùy chọn nấu ăn luôn cho cả bữa trưa hôm sau (Tính là 2 bữa ăn) */}
+          <div 
+            onClick={() => setKemBuaTrua(!kemBuaTrua)}
+            className={`p-3.5 rounded-xl border transition-all cursor-pointer flex items-center justify-between gap-3 ${
+              kemBuaTrua 
+                ? 'bg-amber-500/10 border-amber-500/40 text-amber-200' 
+                : 'bg-slate-950/40 border-slate-800/80 hover:border-slate-700 text-slate-300'
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              <input
+                type="checkbox"
+                id="kemBuaTruaCheckbox"
+                checked={kemBuaTrua}
+                onChange={(e) => setKemBuaTrua(e.target.checked)}
+                className="w-4 h-4 rounded text-amber-500 focus:ring-amber-400 focus:ring-offset-slate-900 border-slate-700 bg-slate-900 cursor-pointer"
+                onClick={(e) => e.stopPropagation()}
+              />
+              <div>
+                <label 
+                  htmlFor="kemBuaTruaCheckbox" 
+                  className="text-sm font-bold block cursor-pointer flex items-center gap-1.5"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  🍱 Ăn luôn cho trưa hôm sau (Tính là 2 bữa)
+                </label>
+                <span className="text-[11px] text-slate-400 block mt-0.5">
+                  Thức ăn tối dư dùng tiếp cho bữa trưa hôm sau. Tiền không đổi, nhưng số bữa thống kê sẽ tính là 2 bữa (Tối + Trưa).
+                </span>
+              </div>
+            </div>
+            <span className={`text-[11px] font-bold px-2 py-1 rounded-md shrink-0 ${
+              kemBuaTrua ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : 'bg-slate-800 text-slate-500'
+            }`}>
+              {kemBuaTrua ? '+ 1 Bữa trưa' : '1 Bữa tối'}
+            </span>
           </div>
 
           {/* Danh sách người ăn & số tiền từng người */}

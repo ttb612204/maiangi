@@ -29,6 +29,7 @@ export interface BuaToi {
   thuTrongTuan: string;
   tongTien: number;
   tienChung?: number;
+  kemBuaTrua?: boolean;
   ngayAn: string;
   nguoiAnIds: number[];
   chiTietNguoiAn?: NguoiAnChiTiet[];
