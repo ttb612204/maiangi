@@ -6,7 +6,7 @@ import {
   X, 
   ChefHat
 } from 'lucide-react';
-import { BuaToi, ThanhVien, BuaKemChiTiet } from '../services/api';
+import { BuaToi, ThanhVien } from '../services/api';
 
 interface TongChiPhiThanhVienProps {
   thanhViens: ThanhVien[];
@@ -24,8 +24,6 @@ interface BuaAnCuaNguoi {
   tongTienPhanMinh: number;
   tongTienBuaAn: number;
   nguoiTraText: string;
-  kemBuaTrua?: boolean;
-  cacBuaKem?: BuaKemChiTiet[];
 }
 
 export const TongChiPhiThanhVien: React.FC<TongChiPhiThanhVienProps> = React.memo(({
@@ -105,16 +103,6 @@ export const TongChiPhiThanhVien: React.FC<TongChiPhiThanhVienProps> = React.mem
             .map((p) => `${getTenThanhVien(p.thanhVienId)} (${formatVND(p.soTienDaTra)})`)
             .join(', ') || 'Chưa rõ';
 
-          // Lấy danh sách bữa kèm riêng của người này nếu có, nếu không thì lấy bữa kèm chung của bữa tối
-          let memberCacBuaKem: BuaKemChiTiet[] = [];
-          if (detailed && Array.isArray(detailed.cacBuaKem) && detailed.cacBuaKem.length > 0) {
-            memberCacBuaKem = detailed.cacBuaKem;
-          } else if (Array.isArray(bt.cacBuaKem) && bt.cacBuaKem.length > 0) {
-            memberCacBuaKem = bt.cacBuaKem;
-          } else if (bt.kemBuaTrua) {
-            memberCacBuaKem = [{ loaiBua: 'trua', ngay: bt.ngayAn, moTa: 'Trưa hôm sau' }];
-          }
-
           danhSachBuaAn.push({
             id: bt.id,
             ngayAn: bt.ngayAn,
@@ -126,8 +114,6 @@ export const TongChiPhiThanhVien: React.FC<TongChiPhiThanhVienProps> = React.mem
             tongTienPhanMinh: soTienTong,
             tongTienBuaAn: bt.tongTien,
             nguoiTraText,
-            kemBuaTrua: !!bt.kemBuaTrua,
-            cacBuaKem: memberCacBuaKem,
           });
         }
       });
@@ -135,41 +121,13 @@ export const TongChiPhiThanhVien: React.FC<TongChiPhiThanhVienProps> = React.mem
       // Sắp xếp ngày mới nhất lên trước
       danhSachBuaAn.sort((a, b) => new Date(b.ngayAn).getTime() - new Date(a.ngayAn).getTime());
 
-      // Tính tổng số suất/bữa ăn: 1 bữa chính + các bữa kèm thêm
-      const soBuaAn = danhSachBuaAn.reduce((acc, item) => {
-        if (item.loai !== 'chi_phi_khac') {
-          const soBuaKemThem = item.cacBuaKem?.length || (item.kemBuaTrua ? 1 : 0);
-          return acc + 1 + soBuaKemThem;
-        }
-        return acc + 1; // Chi phí khác tính 1 khoản
-      }, 0);
-
-      // Thống kê phân loại bữa
-      let countToi = 0;
-      let countTrua = 0;
-      danhSachBuaAn.forEach(item => {
-        if (item.loai !== 'chi_phi_khac') {
-          countToi += 1; // bữa tối chính
-          if (Array.isArray(item.cacBuaKem) && item.cacBuaKem.length > 0) {
-            item.cacBuaKem.forEach(bk => {
-              if (bk.loaiBua === 'trua') countTrua += 1;
-              else if (bk.loaiBua === 'toi') countToi += 1;
-            });
-          } else if (item.kemBuaTrua) {
-            countTrua += 1;
-          }
-        }
-      });
-
       return {
         id: tv.id,
         ten: tv.ten,
         tongTienAn,
         tongTienRieng,
         tongTienChung,
-        soBuaAn,
-        soBuaToi: countToi,
-        soBuaTrua: countTrua,
+        soBuaAn: danhSachBuaAn.length,
         danhSachBuaAn,
       };
     });
@@ -243,11 +201,8 @@ export const TongChiPhiThanhVien: React.FC<TongChiPhiThanhVienProps> = React.mem
                           <span className="text-base font-bold text-white group-hover:text-amber-300 transition-colors truncate">
                             {item.ten}
                           </span>
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-800 text-slate-300 border border-slate-700/60 flex items-center gap-1">
-                            <span>{item.soBuaAn} bữa</span>
-                            {item.soBuaTrua > 0 && (
-                              <span className="text-amber-400 font-normal">({item.soBuaToi} tối + {item.soBuaTrua} trưa)</span>
-                            )}
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-800 text-slate-400 border border-slate-700/60">
+                            {item.soBuaAn} bữa
                           </span>
                         </div>
                         <div className="flex items-center gap-2 text-[11px] text-slate-400 mt-1">
@@ -323,11 +278,6 @@ export const TongChiPhiThanhVien: React.FC<TongChiPhiThanhVienProps> = React.mem
                   <Calendar className="w-4 h-4 text-indigo-400" />
                   {selectedMemberData.soBuaAn} bữa
                 </span>
-                {selectedMemberData.soBuaTrua > 0 && (
-                  <span className="text-[10px] text-amber-400 block mt-0.5 font-medium">
-                    ({selectedMemberData.soBuaToi} tối + {selectedMemberData.soBuaTrua} trưa hôm sau)
-                  </span>
-                )}
               </div>
 
               <div className="bg-slate-900/60 border border-slate-800/80 rounded-xl p-3">
@@ -403,25 +353,12 @@ export const TongChiPhiThanhVien: React.FC<TongChiPhiThanhVienProps> = React.mem
                                   </span>
                                 </div>
                               ) : (
-                                <div className="space-y-1">
-                                  <div className="flex items-center gap-1.5 flex-wrap">
-                                    <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 whitespace-nowrap">
-                                      Bữa tối
-                                    </span>
-                                    {bua.cacBuaKem && bua.cacBuaKem.length > 0 ? (
-                                      bua.cacBuaKem.map((bk, kIdx) => (
-                                        <span key={kIdx} className="px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/30 whitespace-nowrap flex items-center gap-1">
-                                          🍱 {bk.loaiBua === 'trua' ? 'Trưa' : 'Tối'} {formatDateDisplay(bk.ngay)} {bk.moTa ? `(${bk.moTa})` : ''}
-                                        </span>
-                                      ))
-                                    ) : bua.kemBuaTrua ? (
-                                      <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/30 whitespace-nowrap flex items-center gap-1">
-                                        🍱 + 1 Bữa trưa (2 bữa)
-                                      </span>
-                                    ) : null}
-                                  </div>
-                                  <span className="text-slate-400 text-[11px] block">
-                                    (Tổng tiền mua: {formatVND(bua.tongTienBuaAn)} / {1 + (bua.cacBuaKem?.length || (bua.kemBuaTrua ? 1 : 0))} bữa)
+                                <div className="flex items-center gap-1.5">
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 whitespace-nowrap">
+                                    Bữa tối
+                                  </span>
+                                  <span className="text-slate-400 text-[11px]">
+                                    (Tổng bữa: {formatVND(bua.tongTienBuaAn)})
                                   </span>
                                 </div>
                               )}
