@@ -68,21 +68,18 @@ export const TongChiPhiThanhVien: React.FC<TongChiPhiThanhVienProps> = React.mem
         let soTienTong = 0;
         let tienChungPhan = 0;
 
+        const hasChiTiet = Array.isArray(bt.chiTietNguoiAn) && bt.chiTietNguoiAn.length > 0;
         const detailed = bt.chiTietNguoiAn?.find((c) => c.thanhVienId === tv.id);
         const isInNguoiAnIds = bt.nguoiAnIds?.includes(tv.id);
 
-        if (detailed) {
-          daThamGia = true;
-          if (detailed.soTien > 0) {
+        if (hasChiTiet) {
+          if (detailed && Number(detailed.soTien) > 0) {
+            daThamGia = true;
             soTienTong = Number(detailed.soTien);
             soTienRieng = Number(detailed.soTienRieng || 0);
             tienChungPhan = Math.max(0, soTienTong - soTienRieng);
           } else {
-            // Trường hợp chi tiết chưa có số tiền (dữ liệu cũ), chia đều
-            const soNguoi = bt.nguoiAnIds?.length || 1;
-            soTienTong = bt.tongTien / soNguoi;
-            tienChungPhan = Number(bt.tienChung || 0) / soNguoi;
-            soTienRieng = Math.max(0, soTienTong - tienChungPhan);
+            daThamGia = false;
           }
         } else if (isInNguoiAnIds) {
           daThamGia = true;

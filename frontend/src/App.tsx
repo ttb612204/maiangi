@@ -280,16 +280,30 @@ function App() {
         const soTienDaChi = payerRecord ? payerRecord.soTienDaTra : 0;
         if (soTienDaChi <= 0) return null;
 
+        const totalPaid = bt.nguoiTraTien?.reduce((sum, p) => sum + (Number(p.soTienDaTra) || 0), 0) || 0;
+        const payerRatio = totalPaid > 0 ? soTienDaChi / totalPaid : 0;
+
         const countNguoiAn = bt.nguoiAnIds?.length || 0;
-        const tienMoiNguoi = countNguoiAn > 0 ? bt.tongTien / countNguoiAn : 0;
+        const tienMoiNguoiDefault = countNguoiAn > 0 ? bt.tongTien / countNguoiAn : 0;
+        const hasChiTiet = Array.isArray(bt.chiTietNguoiAn) && bt.chiTietNguoiAn.length > 0;
 
         const nguoiNoBuaNay = (bt.nguoiAnIds || [])
           .filter((id) => id !== selectedCreditorId)
-          .map((id) => ({
-            thanhVienId: id,
-            ten: getTenThanhVien(id),
-            soTienNo: tienMoiNguoi,
-          }));
+          .map((id) => {
+            let phanTien = 0;
+            if (hasChiTiet) {
+              const detail = bt.chiTietNguoiAn?.find((c) => c.thanhVienId === id);
+              phanTien = detail ? Number(detail.soTien || 0) : 0;
+            } else {
+              phanTien = tienMoiNguoiDefault;
+            }
+            return {
+              thanhVienId: id,
+              ten: getTenThanhVien(id),
+              soTienNo: phanTien * payerRatio,
+            };
+          })
+          .filter((item) => item.soTienNo > 0.001);
 
         const displayName = bt.loai === 'chi_phi_khac' ? `Chi phí: ${bt.moTa}` : bt.thuTrongTuan;
 
@@ -307,20 +321,28 @@ function App() {
     if (!selectedCreditorId) return [];
     return buaTois
       .map((bt) => {
-        const isEater = bt.nguoiAnIds?.includes(selectedCreditorId);
-        if (!isEater) return null;
+        const countNguoiAn = bt.nguoiAnIds?.length || 0;
+        const tienMoiNguoiDefault = countNguoiAn > 0 ? bt.tongTien / countNguoiAn : 0;
+        const hasChiTiet = Array.isArray(bt.chiTietNguoiAn) && bt.chiTietNguoiAn.length > 0;
+
+        let phanMinhAn = 0;
+        if (hasChiTiet) {
+          const detail = bt.chiTietNguoiAn?.find((c) => c.thanhVienId === selectedCreditorId);
+          phanMinhAn = detail ? Number(detail.soTien || 0) : 0;
+        } else if (bt.nguoiAnIds?.includes(selectedCreditorId)) {
+          phanMinhAn = tienMoiNguoiDefault;
+        }
+
+        if (phanMinhAn <= 0.001) return null;
 
         const payerRecord = bt.nguoiTraTien?.find((p) => p.thanhVienId === selectedCreditorId);
         const soTienDaChi = payerRecord ? payerRecord.soTienDaTra : 0;
 
-        const countNguoiAn = bt.nguoiAnIds?.length || 0;
-        const tienMoiNguoi = countNguoiAn > 0 ? bt.tongTien / countNguoiAn : 0;
-
-        const tienAnNo = tienMoiNguoi - soTienDaChi;
+        const tienAnNo = phanMinhAn - soTienDaChi;
         if (tienAnNo <= 0.01) return null;
 
         const creditors = (bt.nguoiTraTien || [])
-          .filter((p) => p.soTienDaTra > 0)
+          .filter((p) => p.soTienDaTra > 0 && p.thanhVienId !== selectedCreditorId)
           .map((p) => ({
             ten: getTenThanhVien(p.thanhVienId),
             soTienDaChi: p.soTienDaTra,

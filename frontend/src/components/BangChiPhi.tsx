@@ -289,8 +289,20 @@ export const BangChiPhi: React.FC<BangChiPhiProps> = React.memo(({
                     {/* Người Ăn / Chia Sẻ */}
                     <td className="py-3 px-4">
                       <div className="flex flex-wrap gap-1 max-w-xs">
-                        {item.nguoiAnIds && item.nguoiAnIds.length > 0 ? (
-                          item.nguoiAnIds.map((id) => {
+                        {(() => {
+                          const eaters = (item.nguoiAnIds || []).filter((id) => {
+                            if (item.chiTietNguoiAn && item.chiTietNguoiAn.length > 0) {
+                              const detail = item.chiTietNguoiAn.find((d) => d.thanhVienId === id);
+                              return detail ? Number(detail.soTien || 0) > 0 : false;
+                            }
+                            return true;
+                          });
+
+                          if (eaters.length === 0) {
+                            return <span className="text-slate-600 italic text-[11px]">Chưa chọn</span>;
+                          }
+
+                          return eaters.map((id) => {
                             const detail = item.chiTietNguoiAn?.find((d) => d.thanhVienId === id);
                             const hasPrivate = detail && detail.soTienRieng !== undefined && detail.soTienRieng > 0;
                             return (
@@ -311,10 +323,8 @@ export const BangChiPhi: React.FC<BangChiPhiProps> = React.memo(({
                                 )}
                               </span>
                             );
-                          })
-                        ) : (
-                          <span className="text-slate-600 italic text-[11px]">Chưa chọn</span>
-                        )}
+                          });
+                        })()}
                       </div>
                       {item.tienChung && Number(item.tienChung) > 0 ? (
                         <div className="mt-1 text-[10px] text-amber-400 font-mono">

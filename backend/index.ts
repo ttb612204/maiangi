@@ -137,6 +137,7 @@ function tinhTienBuoiToi(
 ): KetQuaChiaTien[] {
   const soNguoiAn = nguoiAnIds.length;
   const tienMoiNguoi = soNguoiAn > 0 ? tongTien / soNguoiAn : 0;
+  const hasChiTiet = Array.isArray(chiTietNguoiAn) && chiTietNguoiAn.length > 0;
 
   return tatCaThanhVienIds.map((thanhVienId) => {
     const isNguoiAn = nguoiAnIds.includes(thanhVienId);
@@ -144,13 +145,11 @@ function tinhTienBuoiToi(
     const soTienDaTra = paidRecord ? paidRecord.soTienDaTra : 0;
     
     let soTienPhaiTra = 0;
-    if (isNguoiAn) {
-      const detailed = chiTietNguoiAn?.find((c) => c.thanhVienId === thanhVienId);
-      if (detailed && Number(detailed.soTien) > 0) {
-        soTienPhaiTra = Number(detailed.soTien);
-      } else {
-        soTienPhaiTra = tienMoiNguoi;
-      }
+    if (hasChiTiet) {
+      const detailed = chiTietNguoiAn.find((c) => c.thanhVienId === thanhVienId);
+      soTienPhaiTra = detailed ? Number(detailed.soTien || 0) : 0;
+    } else if (isNguoiAn) {
+      soTienPhaiTra = tienMoiNguoi;
     }
     const balance = soTienDaTra - soTienPhaiTra;
 
@@ -250,10 +249,19 @@ function tinhChuyenKhoanSongPhuong(
     const totalPaid = bt.nguoiTraTien?.reduce((sum: number, p: any) => sum + p.soTienDaTra, 0) || 0;
     if (totalPaid === 0) continue;
     
+    const hasChiTiet = Array.isArray(bt.chiTietNguoiAn) && bt.chiTietNguoiAn.length > 0;
+
     // Với mỗi người ăn B
     for (const B of bt.nguoiAnIds) {
-      const detailed = bt.chiTietNguoiAn?.find((c: any) => c.thanhVienId === B);
-      const tienMoiNguoi = (detailed && Number(detailed.soTien) > 0) ? Number(detailed.soTien) : (bt.tongTien / countNguoiAn);
+      let tienCuaB = 0;
+      if (hasChiTiet) {
+        const detailed = bt.chiTietNguoiAn.find((c: any) => c.thanhVienId === B);
+        tienCuaB = detailed ? Number(detailed.soTien || 0) : 0;
+      } else {
+        tienCuaB = bt.tongTien / countNguoiAn;
+      }
+
+      if (tienCuaB <= 0.001) continue;
 
       // Mỗi người trả tiền A tài trợ cho B một phần
       for (const p of bt.nguoiTraTien) {
@@ -261,8 +269,8 @@ function tinhChuyenKhoanSongPhuong(
         const A = p.thanhVienId;
         if (A === B) continue; // Không nợ chính mình
         
-        // A tài trợ: (p.soTienDaTra / totalPaid) * tienMoiNguoi
-        const fundedAmount = (p.soTienDaTra / totalPaid) * tienMoiNguoi;
+        // A tài trợ: (p.soTienDaTra / totalPaid) * tienCuaB
+        const fundedAmount = (p.soTienDaTra / totalPaid) * tienCuaB;
         const key = getOwedKey(B, A); // B nợ A
         netOwed.set(key, (netOwed.get(key) || 0) + fundedAmount);
       }
